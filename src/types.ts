@@ -443,6 +443,7 @@ export type SceneData = {
   appState?: ImportedDataState["appState"];
   collaborators?: Map<string, Collaborator>;
   commitToHistory?: boolean;
+  isRemoteUpdate?: boolean;
 };
 
 export enum UserIdleState {

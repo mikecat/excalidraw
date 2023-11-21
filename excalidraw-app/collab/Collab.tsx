@@ -453,10 +453,12 @@ class Collab extends PureComponent<Props, CollabState> {
       // expose potentially sensitive user data in case user manually deletes
       // existing elements (or clears scene), which would otherwise be persisted
       // to database even if deleted before creating the room.
-      this.excalidrawAPI.history.clear();
+      // TODO: double check, looks like we might want to leave it
+      // this.excalidrawAPI.history.clear();
       this.excalidrawAPI.updateScene({
         elements,
         commitToHistory: true,
+        isRemoteUpdate: true, //  TODO: is it really?
       });
 
       this.saveCollabRoomToFirebase(getSyncableElements(elements));
@@ -656,13 +658,14 @@ class Collab extends PureComponent<Props, CollabState> {
     this.excalidrawAPI.updateScene({
       elements,
       commitToHistory: !!init,
+      isRemoteUpdate: true
     });
 
     // We haven't yet implemented multiplayer undo functionality, so we clear the undo stack
     // when we receive any messages from another peer. This UX can be pretty rough -- if you
     // undo, a user makes a change, and then try to redo, your element(s) will be lost. However,
     // right now we think this is the right tradeoff.
-    this.excalidrawAPI.history.clear();
+    // this.excalidrawAPI.history.clear();
 
     this.loadImageFiles();
   };
@@ -777,7 +780,8 @@ class Collab extends PureComponent<Props, CollabState> {
 
   syncElements = (elements: readonly ExcalidrawElement[]) => {
     this.broadcastElements(elements);
-    this.queueSaveToFirebase();
+    // TODO: re-enable only for dev mode
+    // this.queueSaveToFirebase();
   };
 
   queueBroadcastAllElements = throttle(() => {

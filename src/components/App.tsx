@@ -1529,7 +1529,8 @@ class App extends React.Component<AppProps, AppState> {
           },
           () => {
             if (actionResult.syncHistory) {
-              this.history.setCurrentState(
+              this.history.resumeRecording();
+              this.history.record(
                 this.state,
                 this.scene.getElementsIncludingDeleted(),
               );
@@ -2922,9 +2923,14 @@ class App extends React.Component<AppProps, AppState> {
       appState?: Pick<AppState, K> | null;
       collaborators?: SceneData["collaborators"];
       commitToHistory?: SceneData["commitToHistory"];
+      isRemoteUpdate?: SceneData["isRemoteUpdate"];
     }) => {
       if (sceneData.commitToHistory) {
         this.history.resumeRecording();
+      }
+
+      if (sceneData.isRemoteUpdate) {
+        this.history.captureSnapshot();
       }
 
       if (sceneData.appState) {
