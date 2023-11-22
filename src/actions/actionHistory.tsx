@@ -28,56 +28,18 @@ const writeData = (
       return { commitToHistory };
     }
 
-    const prevElementMap = arrayToMap(prevElements);
+    const nextAppState = data.appStateChange.apply(appState);
+    const nextElements = Array.from(
+      data.elementsChange.apply(arrayToMap(prevElements)).values(),
+    );
 
-    const updatedElements = prevElements.map((prevElement) => {
-      const nextElement = data.deltaElements.get(prevElement.id);
-
-      if (nextElement) {
-        return newElementWith(prevElement, nextElement);
-      }
-
-      return prevElement;
-    });
-    
-    const addedElements = Object.values(data.deltaElements).map((elementDelta) => {
-      if (!prevElementMap.has(elementDelta.id)) {
-        return newElementWith(elementDelta, elementDelta);
-      }
-    });
-
-    const nextElements = updatedElements.concat(addedElements);
-
-    const nextAppState = {
-      ...appState,
-      ...data.deltaAppState,
-    };
-
-    // const nextElementMap = arrayToMap(nextElements);
-
-    // const deletedElements = prevElements.filter(
-    //   (prevElement) => !nextElementMap.has(prevElement.id),
-    // );
-    // const elements = nextElements
-    //   .map((nextElement) =>
-    //     newElementWith(
-    //       prevElementMap.get(nextElement.id) || nextElement,
-    //       nextElement,
-    //     ),
-    //   )
-    //   .concat(
-    //     deletedElements.map((prevElement) =>
-    //       newElementWith(prevElement, { isDeleted: true }),
-    //     ),
-    //   );
     // TODO: valid? probably yes
     // fixBindingsAfterDeletion(elements, deletedElements);
 
     return {
-      elements: nextElements,
       appState: nextAppState,
+      elements: nextElements,
       commitToHistory,
-      syncHistory: true,
     };
   }
   return { commitToHistory };

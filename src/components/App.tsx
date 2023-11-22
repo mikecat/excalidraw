@@ -1508,35 +1508,24 @@ class App extends React.Component<AppProps, AppState> {
           editingElement = null;
         }
 
-        this.setState(
-          (state) => {
-            // using Object.assign instead of spread to fool TS 4.2.2+ into
-            // regarding the resulting type as not containing undefined
-            // (which the following expression will never contain)
-            return Object.assign(actionResult.appState || {}, {
-              // NOTE this will prevent opening context menu using an action
-              // or programmatically from the host, so it will need to be
-              // rewritten later
-              contextMenu: null,
-              editingElement,
-              viewModeEnabled,
-              zenModeEnabled,
-              gridSize,
-              theme,
-              name,
-              errorMessage,
-            });
-          },
-          () => {
-            if (actionResult.syncHistory) {
-              this.history.resumeRecording();
-              this.history.record(
-                this.state,
-                this.scene.getElementsIncludingDeleted(),
-              );
-            }
-          },
-        );
+        this.setState((state) => {
+          // using Object.assign instead of spread to fool TS 4.2.2+ into
+          // regarding the resulting type as not containing undefined
+          // (which the following expression will never contain)
+          return Object.assign(actionResult.appState || {}, {
+            // NOTE this will prevent opening context menu using an action
+            // or programmatically from the host, so it will need to be
+            // rewritten later
+            contextMenu: null,
+            editingElement,
+            viewModeEnabled,
+            zenModeEnabled,
+            gridSize,
+            theme,
+            name,
+            errorMessage,
+          });
+        });
       }
     },
   );

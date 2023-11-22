@@ -2,6 +2,118 @@ import { AppState } from "./types";
 import { ExcalidrawElement } from "./element/types";
 import { getDefaultAppState } from "./appState";
 import { arrayToMap, cloneJSON, isShallowEqual } from "./utils";
+import { AppStateChange, ElementsChange } from "./change";
+
+function clearElementPropertiesForHistory(element: ExcalidrawElement) {
+  const { updated, version, versionNonce, ...strippedElement } = element;
+  return strippedElement;
+}
+
+const clearAppStatePropertiesForHistory = (appState: AppState) => {
+  return {
+    name: appState.name,
+    editingGroupId: appState.editingGroupId,
+    viewBackgroundColor: appState.viewBackgroundColor,
+    selectedElementIds: appState.selectedElementIds,
+    selectedGroupIds: appState.selectedGroupIds,
+    editingLinearElement: appState.editingLinearElement,
+  };
+};
+
+export class HistoryEntry {
+  private constructor(
+    public readonly appStateChange: AppStateChange<
+      ReturnType<typeof clearAppStatePropertiesForHistory>
+    >,
+    public readonly elementsChange: ElementsChange<
+      ExcalidrawElement["id"],
+      Partial<ReturnType<typeof clearElementPropertiesForHistory>>
+    >,
+  ) {}
+
+  public static create(prevState: HistorySnapshot, nextState: HistorySnapshot) {
+    const appStateChange = AppStateChange.calculate(
+      prevState.appState,
+      nextState.appState,
+    );
+    const elementsChange = ElementsChange.calculate(
+      arrayToMap(prevState.elements),
+      arrayToMap(nextState.elements),
+    );
+
+    // TODO: strip away version, versionNonce and etc.
+    return new HistoryEntry(appStateChange.inverse(), elementsChange.inverse());
+  }
+
+  public inverse(): HistoryEntry {
+    return new HistoryEntry(
+      this.appStateChange.inverse(),
+      this.elementsChange.inverse(),
+    );
+  }
+}
+
+class HistorySnapshot {
+  private constructor(
+    public readonly appState: ReturnType<
+      typeof clearAppStatePropertiesForHistory
+    >,
+    public readonly elements: readonly ExcalidrawElement[] = [],
+  ) {}
+
+  public static empty() {
+    return new HistorySnapshot(
+      clearAppStatePropertiesForHistory(getDefaultAppState() as any), // TODO: fix
+    );
+  }
+
+  public static create(
+    appState: ReturnType<typeof clearAppStatePropertiesForHistory>,
+    elements: readonly ExcalidrawElement[],
+  ) {
+    return new HistorySnapshot(appState, elements);
+  }
+
+  public didChange(
+    nextAppState: ReturnType<typeof clearAppStatePropertiesForHistory>,
+    nextElements: readonly ExcalidrawElement[],
+  ) {
+    return (
+      this.didAppStateChange(nextAppState) ||
+      this.didElementsChange(nextElements)
+    );
+  }
+
+  private didAppStateChange(
+    nextAppState: ReturnType<typeof clearAppStatePropertiesForHistory>,
+  ) {
+    // TODO: linearElementEditor? potentially others?
+    return !isShallowEqual(this.appState, nextAppState, {
+      selectedElementIds: isShallowEqual,
+      selectedGroupIds: isShallowEqual,
+    });
+  }
+
+  private didElementsChange(nextElements: readonly ExcalidrawElement[]) {
+    if (this.elements.length !== nextElements.length) {
+      return true;
+    }
+
+    // loop from right to left as changes are likelier to happen on new elements
+    for (let i = nextElements.length - 1; i > -1; i--) {
+      const prev = this.elements[i];
+      const next = nextElements[i];
+      if (
+        !prev ||
+        !next ||
+        prev.id !== next.id ||
+        prev.versionNonce !== next.versionNonce
+      ) {
+        return true;
+      }
+    }
+  }
+}
 
 class History {
   private recording: boolean = true;
@@ -12,10 +124,6 @@ class History {
 
   // TODO: I might not need this if the logic is inside the updater
   private historySnapshot = HistorySnapshot.empty();
-
-  constructor() {
-    this.historySnapshot
-  }
 
   public clear() {
     this.undoStack.length = 0;
@@ -43,7 +151,8 @@ class History {
     const undoEntry = this.undoStack.pop();
 
     if (undoEntry !== undefined) {
-      const redoEntry = undoEntry.inverse(this.historySnapshot);
+      // TODO: is this correct? Ideally I should inverse it after applying it
+      const redoEntry = undoEntry.inverse();
       this.redoStack.push(redoEntry);
 
       return undoEntry;
@@ -61,9 +170,8 @@ class History {
     const redoEntry = this.redoStack.pop();
 
     if (redoEntry !== undefined) {
-      const undoEntry = redoEntry.inverse(this.historySnapshot);
+      const undoEntry = redoEntry.inverse();
       this.undoStack.push(undoEntry);
-
       return redoEntry;
     }
 
@@ -75,21 +183,21 @@ class History {
    * Record passed elements regardless of origin, so we could calculate a diff
    */
   // TODO: should this happen in requestIdleCallback or no need?
-  public record(nextAppState: AppState, nextElements: readonly ExcalidrawElement[]) {
+  public record(
+    nextAppState: AppState,
+    nextElements: readonly ExcalidrawElement[],
+  ) {
     // Optimisation, continue only if we are recording or capturing
     if (!this.recording && !this.capturing) {
       return;
     }
 
     // Optimisation, don't continue if no change detected compared to last snapshot
-    if (
-      !didElementsChange(this.historySnapshot.elements, nextElements)
-      && !didAppStateChange(this.historySnapshot.appState, nextAppState)
-    ) {
+    const nextHistoryAppState = clearAppStatePropertiesForHistory(nextAppState);
+    if (!this.historySnapshot.didChange(nextHistoryAppState, nextElements)) {
       return;
     }
 
-    // TODO: remove unnecessary properties before cloning
     // TODO: think about faster way to do this (- faster / cheaper clone / cache)
     // Cloning due to potential mutations, as we are calculating history entries out of the latest local snapshot
     const nextHistorySnapshot = HistorySnapshot.create(
@@ -101,18 +209,17 @@ class History {
     if (this.recording) {
       const nextEntry = HistoryEntry.create(
         this.historySnapshot,
-        nextHistorySnapshot
+        nextHistorySnapshot,
       );
 
       if (this.shouldCreateEntry(nextEntry)) {
         this.undoStack.push(nextEntry);
 
-        // TODO: this does not have to be true, we can keep it longer
         // As a new entry was pushed, we invalidate the redo stack
         // this.clearRedoStack();
-
-        this.recording = false;
       }
+
+      this.recording = false;
     }
 
     // Here capture the snapshot no matter what, we are either recording or capturing anyways
@@ -125,12 +232,11 @@ class History {
   }
 
   private shouldCreateEntry(nextEntry: HistoryEntry): boolean {
-    // AppState changed!
-    if (Object.keys(nextEntry.deltaAppState).length) {
+    if (!nextEntry.appStateChange.isEmpty()) {
       return true;
     }
 
-    if (Object.keys(nextEntry.deltaElements).length) {
+    if (!nextEntry.elementsChange.isEmpty()) {
       return true;
     }
 
@@ -138,199 +244,99 @@ class History {
   }
 }
 
-class HistorySnapshot {
-  private constructor(
-    public readonly appState: ReturnType<typeof clearAppStatePropertiesForHistory>,
-    public readonly elements: readonly ExcalidrawElement[] = [],
-  ) { }
-
-  public static empty() {
-    return new HistorySnapshot(
-      clearAppStatePropertiesForHistory(<any>getDefaultAppState()), // TODO: fix
-    );
-  }
-
-  public static create(
-    appState: ReturnType<typeof clearAppStatePropertiesForHistory>,
-    elements: readonly ExcalidrawElement[],
-  ) {
-    return new HistorySnapshot(appState, elements);
-  }
-}
-
-export class HistoryEntry {
-  constructor(
-    // TODO: would be nicer to have really just delta
-    public readonly deltaAppState: Partial<ReturnType<typeof clearAppStatePropertiesForHistory>>,
-    public readonly deltaElements: Map<ExcalidrawElement["id"], Partial<ExcalidrawElement>>,
-  ) { }
-
-  public static create(
-    prevState: HistorySnapshot,
-    nextState: HistorySnapshot,
-  ) {
-    return new HistoryEntry(
-      createInversedAppStateDelta(prevState.appState, nextState.appState),
-      createInversedElementsDeltas(prevState.elements, nextState.elements),
-    )
-  }
-
-  public inverse(state: HistorySnapshot) {
-    const inversedElementDeltas = new Map();
-
-    const prevElementsMap = arrayToMap(state.elements);
-
-    // inverse elements deltas
-    for (const [id, delta] of this.deltaElements) {
-      const prevElement = prevElementsMap.get(id);
-
-      if (!prevElement) {
-        // element was added => inverse is deletion
-        inversedElementDeltas.set(id, { isDeleted: true });
-        continue;
-      }
-
-      const previousProperties = Object.values(prevElement);
-      const inversedProperties = Object.keys(delta)
-        .reduce((acc, key) => {
-          acc[key] = prevElement[key];
-          return acc;
-        }, {});
-
-      inversedElementDeltas.set(id, { ...previousProperties, ...inversedProperties })
-    }
-
-    // inverse appstate delta
-    const inversedAppStateDelta = Object.keys(this.deltaAppState)
-      .reduce((acc, key) => {
-        acc[key] = state.appState[key]
-        return acc;
-      }, {})
-
-    return new HistoryEntry(
-      inversedAppStateDelta,
-      inversedElementDeltas
-    )
-  }
-};
-
 export default History;
 
-const clearAppStatePropertiesForHistory = (appState: AppState) => {
-  return {
-    name: appState.name,
-    editingGroupId: appState.editingGroupId,
-    viewBackgroundColor: appState.viewBackgroundColor,
-    selectedElementIds: appState.selectedElementIds,
-    selectedGroupIds: appState.selectedGroupIds,
-    editingLinearElement: appState.editingLinearElement,
-  };
-};
+// public inverse(state: HistorySnapshot) {
+//   const inversedElementDeltas = new Map();
 
-// TODO utils, maybe they deserve it's own place
-function didElementsChange(
-  prevElements: readonly ExcalidrawElement[],
-  nextElements: readonly ExcalidrawElement[],
-) {
-  if (prevElements.length !== nextElements.length) {
-    return true;
-  }
+//   const prevElementsMap = arrayToMap(state.elements);
+//   // inverse elements deltas
+//   for (const [id, delta] of this.elementsChange) {
+//     const prevElement = prevElementsMap.get(id);
 
-  // loop from right to left as changes are likelier to happen on new elements
-  for (let i = nextElements.length - 1; i > -1; i--) {
-    const prev = prevElements[i];
-    const next = nextElements[i];
-    if (
-      !prev ||
-      !next ||
-      prev.id !== next.id ||
-      prev.versionNonce !== next.versionNonce
-    ) {
-      return true;
-    }
-  }
-}
+//     if (!prevElement) {
+//       // element was added => inverse is deletion
+//       inversedElementDeltas.set(id, { ...delta, isDeleted: true });
+//       continue;
+//     }
 
-function didAppStateChange(
-  prevState: ReturnType<typeof clearAppStatePropertiesForHistory>,
-  nextAppState: ReturnType<typeof clearAppStatePropertiesForHistory>,
-) {
-  // TODO: linearElementEditor? potentially others?
-  return !isShallowEqual(prevState, nextAppState, {
-    selectedElementIds: isShallowEqual,
-    selectedGroupIds: isShallowEqual,
-  })
-}
+//     const inversedProperties = Object.keys(delta).reduce((acc, key) => {
+//       acc[key] = prevElement[key];
+//       return acc;
+//     }, {});
 
-// TODO: Get away from static functions
-function createInversedAppStateDelta(
-  prevAppState: ReturnType<typeof clearAppStatePropertiesForHistory>,
-  nextAppState: ReturnType<typeof clearAppStatePropertiesForHistory>,
-) {
-  return __unsafe__inversedDeltasGenerator(prevAppState, nextAppState);
-}
+//     inversedElementDeltas.set(id, {
+//       ...prevElement,
+//       ...inversedProperties,
+//     });
+//   }
 
-function createInversedElementsDeltas(
-  prevElements: readonly ExcalidrawElement[],
-  nextElements: readonly ExcalidrawElement[],
-) {
-  // TODO: Strip it from version, versionNonce and potentially other useless metadata
-  const inversedDeltas: Map<ExcalidrawElement["id"], Partial<ExcalidrawElement>> = new Map();
+//   // inverse appstate delta
+//   // move to a util
+//   const inversedAppStateDelta = Object.keys(this.appStateChange).reduce(
+//     (acc, key) => {
+//       acc[key] = state.appState[key];
+//       return acc;
+//     },
+//     {},
+//   );
 
-  // Optimizing for hot path
-  if (!didElementsChange(prevElements, nextElements)) {
-    return inversedDeltas;
-  }
+//   return new HistoryEntry(inversedAppStateDelta, inversedElementDeltas);
+// }
 
-  const prevElementsMap = arrayToMap(prevElements);
+// type ElementDelta = ReturnType<typeof omitIrrelevantElementDeltaProps>;
 
-  for (const element of nextElements) {
-    const cachedElement = prevElementsMap.get(element.id);
+// const omitIrrelevantElementDeltaProps = (delta: Partial<ExcalidrawElement>) => {
+//   const {
+//     id,
+//     version,
+//     versionNonce,
+//     updated,
+//     ...strippedDelta
+//   } = delta;
 
-    if (!cachedElement) {
-      // element was added => inverse is deletion
-      inversedDeltas.set(element.id, { isDeleted: true });
-      continue;
-    }
+//   return strippedDelta
+// }
 
-    if (cachedElement.versionNonce !== element.versionNonce) {
-      // element was updated (including "soft" deletion) => inverse are previous values of modified properties
-      const elementDelta = __unsafe__inversedDeltasGenerator(cachedElement, element);
-      inversedDeltas.set(element.id, elementDelta);
-    }
-  }
+// function createInversedElementsDeltas(
+//   prevElements: readonly ExcalidrawElement[],
+//   nextElements: readonly ExcalidrawElement[],
+// ) {
+//   // TODO: Strip it from version, versionNonce and potentially other useless metadata
+//   const inversedDeltas: Map<
+//     ExcalidrawElement["id"],
+//     Partial<ExcalidrawElement>
+//   > = new Map();
 
-  return inversedDeltas;
-}
+//   // Optimizing for hot path
+//   if (!didElementsChange(prevElements, nextElements)) {
+//     return inversedDeltas;
+//   }
 
-// TODO: Let's test this boy first, probably doesn't cover all edge cases
-// TODO: also add some generic typing
-function __unsafe__inversedDeltasGenerator(prevAppState: any, nextAppState: any) {
-  const inversedDelta = {};
+//   const prevElementsMap = arrayToMap(prevElements);
 
-  for (const key of Object.keys(nextAppState)) {
-    if (prevAppState[key] !== nextAppState[key]) {
-      if (typeof nextAppState[key] !== "object") {
-        inversedDelta[key] = prevAppState[key];
-        continue;
-      }
+//   for (const element of nextElements) {
+//     const cachedElement = prevElementsMap.get(element.id);
 
-      // Both are object but one of them is null, so they couldn't be shallow compared
-      if (nextAppState[key] !== null || prevAppState[key] !== null) {
-        inversedDelta[key] = prevAppState[key];
-        continue;
-      }
+//     if (!cachedElement) {
+//       // element was added => inverse is deletion
+//       inversedDeltas.set(element.id, { isDeleted: true });
+//       continue;
+//     }
 
-      if (!isShallowEqual(prevAppState[key], nextAppState[key])) {
-        inversedDelta[key] = prevAppState[key];
-        continue;
-      }
-    }
-  }
+//     if (cachedElement.versionNonce !== element.versionNonce) {
+//       const strippedElement = clearElementPropertiesForHistory(element);
+//       // element was updated (including "soft" deletion) => inverse are previous values of modified properties
+//       const elementDelta = __unsafe__inversedDeltasGenerator(
+//         cachedElement,
+//         strippedElement,
+//       );
+//       inversedDeltas.set(element.id, elementDelta);
+//     }
+//   }
 
-  return inversedDelta;
-}
-
+//   return inversedDeltas;
+// }
 
 // TODO: still needed?
 // if (
