@@ -6,8 +6,6 @@ import History, { HistoryEntry } from "../history";
 import { ExcalidrawElement } from "../element/types";
 import { AppState } from "../types";
 import { KEYS } from "../keys";
-import { newElementWith } from "../element/mutateElement";
-import { fixBindingsAfterDeletion } from "../element/binding";
 import { arrayToMap } from "../utils";
 import { isWindows } from "../constants";
 

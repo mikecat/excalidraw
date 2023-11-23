@@ -1,46 +1,154 @@
 import { newElementWith } from "./element/mutateElement";
 import { ExcalidrawElement } from "./element/types";
-import { AppState } from "./types";
 
-interface Change {
+/**
+ * Represents the difference between two `T` objects, enriched with a `string` accessor.
+ */
+type Delta<T> = {
+  [K in keyof T]?: T[K];
+} & { [key: string]: any };
+
+/**
+ * Encapsulates the modifications captured as `Delta`s.
+ */
+interface Change<T> {
   /**
-   * Inverses the change while creating a new instance
+   * Inverses the `Delta`s while creating a new `Change` instance.
    */
-  inverse(): Change;
+  inverse(): Change<T>;
 
   /**
-   * Applies the change to the previous state
+   * Applies the `Change` to the previous state.
    */
-  apply(previous: unknown): unknown; // TODO: fix type
+  apply(previous: T): T;
 
   /**
-   * Checks whether there are actually any changes
+   * Checks whether there are actually any `Delta`s in the `Change`.x`
    */
   isEmpty(): boolean;
 }
 
-export class ElementsChange<
-  T extends ExcalidrawElement["id"],
-  V extends Partial<ExcalidrawElement>,
-> implements Change
-{
+/**
+ * Represents a change made to an object, tracking additions, removals, and updates in its properties.
+ */
+export class ObjectChange<D extends Delta<D>> implements Change<D> {
   private constructor(
-    private readonly added: Map<T, ExcalidrawElement>,
-    private readonly removed: Map<T, ExcalidrawElement>,
-    private readonly updated: Map<T, { from: V; to: V }>,
+    private readonly added: D,
+    private readonly removed: D,
+    private readonly updated: {
+      from: D;
+      to: D;
+    },
   ) {}
 
-  public static calculate(
+  /**
+   * Calculates the changes between two objects and returns an ObjectChange instance.
+   *
+   * @param prevObject - The previous state of the object.
+   * @param nextObject - The next state of the object.
+   *
+   * @returns ObjectChange instance representing the deltas between `prevObject` and `nextObject`.
+   */
+  public static calculate<D extends Delta<D>>(
+    prevObject: D,
+    nextObject: D,
+  ): ObjectChange<D> {
+    if (prevObject === nextObject) {
+      return ObjectChange.empty() as ObjectChange<D>;
+    }
+
+    const added = {} as D;
+    const removed = {} as D;
+    const updated = {
+      from: {} as D,
+      to: {} as D,
+    };
+
+    for (const [key, nextValue] of Object.entries(nextObject)) {
+      if (!Object.hasOwnProperty.call(prevObject, key)) {
+        added[key as keyof D] = nextValue;
+        continue;
+      }
+
+      const prevValue = prevObject[key as keyof D];
+      // TODO: worth shallow cloning objects?
+      if (prevValue !== nextValue) {
+        updated.from[key as keyof D] = prevValue;
+        updated.to[key as keyof D] = nextValue;
+      }
+    }
+
+    for (const [key, prevValue] of Object.entries(prevObject)) {
+      if (!Object.hasOwnProperty.call(nextObject, key)) {
+        removed[key as keyof D] = prevValue;
+      }
+    }
+
+    return new ObjectChange(added, removed, updated);
+  }
+
+  private static empty() {
+    return new ObjectChange({}, {}, { from: {}, to: {} });
+  }
+
+  public inverse(): ObjectChange<D> {
+    const updated = {
+      from: this.updated.to,
+      to: this.updated.from,
+    };
+
+    return new ObjectChange(this.removed, this.added, updated);
+  }
+
+  public apply<T extends D>(prevObject: T): T {
+    return {
+      ...prevObject,
+      ...this.added,
+      ...this.updated.to,
+    };
+  }
+
+  public isEmpty(): boolean {
+    return (
+      this.added.size === 0 &&
+      this.removed.size === 0 &&
+      this.updated.from.size === 0 &&
+      this.updated.to.size === 0
+    );
+  }
+}
+
+export class ElementsChange<D extends Delta<ExcalidrawElement>>
+  implements Change<Map<string, ExcalidrawElement>>
+{
+  private constructor(
+    private readonly added: Map<string, ExcalidrawElement>,
+    private readonly removed: Map<string, ExcalidrawElement>,
+    private readonly updated: Map<string, { from: D; to: D }>,
+  ) {}
+
+  /**
+   * Calculates the change between previous and next sets of elements.
+   *
+   * @param prevElements - Map representing the previous state of elements.
+   * @param nextElements - Map representing the next state of elements.
+   *
+   * @returns `ElementsChange` instance representing the delta changes between the two sets of elements.
+   */
+  public static calculate<D extends Delta<ExcalidrawElement>>(
     prevElements: Map<string, ExcalidrawElement>,
     nextElements: Map<string, ExcalidrawElement>,
-  ): ElementsChange<string, Partial<ExcalidrawElement>> {
+    deltaModifier?: (elementDelta: D) => D,
+  ): ElementsChange<D> {
+    if (prevElements === nextElements) {
+      return ElementsChange.empty() as ElementsChange<D>;
+    }
+
     const added = new Map<string, ExcalidrawElement>();
     const removed = new Map<string, ExcalidrawElement>();
-    const updated = new Map<
-      string,
-      { from: Partial<ExcalidrawElement>; to: Partial<ExcalidrawElement> }
-    >();
-    // TODO: might not be needed
+    const updated = new Map<string, { from: D; to: D }>();
+
+    // TODO: this might be needed only in same edge cases, like during persist, when isDeleted elements are removed
     for (const [zIndex, prevElement] of prevElements.entries()) {
       const nextElement = nextElements.get(prevElement.id);
 
@@ -49,6 +157,7 @@ export class ElementsChange<
       }
     }
 
+    // TODO: try to find a workaround for zIndex
     for (const [zIndex, nextElement] of nextElements.entries()) {
       const prevElement = prevElements.get(nextElement.id);
 
@@ -58,17 +167,22 @@ export class ElementsChange<
       }
 
       if (prevElement.versionNonce !== nextElement.versionNonce) {
-        const from: { [key: string]: unknown } = {}; // TODO: fix types
-        const to: { [key: string]: unknown } = {};
+        const from = {} as D;
+        const to = {} as D;
 
         const unionOfKeys = new Set([
           ...Object.keys(prevElement),
           ...Object.keys(nextElement),
         ]);
 
+        // O(n^2) here, but it's not as bad as it looks:
+        // - we do this only on history recordings, not on every frame
+        // - we do this only on changed elements
+        // - # of element's properties is reasonably small
+        // - otherwise we would have to emit deltas on user actions & apply them on every frame
         for (const key of unionOfKeys) {
-          const prevValue = prevElement[key as keyof typeof prevElement];
-          const nextValue = nextElement[key as keyof typeof nextElement];
+          const prevValue = prevElement[key as keyof ExcalidrawElement];
+          const nextValue = nextElement[key as keyof ExcalidrawElement];
 
           if (prevValue !== nextValue) {
             from[key] = prevValue;
@@ -77,7 +191,10 @@ export class ElementsChange<
         }
 
         if (Object.keys(from).length || Object.keys(to).length) {
-          updated.set(nextElement.id, { from, to });
+          updated.set(nextElement.id, {
+            from: deltaModifier ? deltaModifier(from) : from,
+            to: deltaModifier ? deltaModifier(to) : to,
+          });
         }
       }
     }
@@ -85,18 +202,25 @@ export class ElementsChange<
     return new ElementsChange(added, removed, updated);
   }
 
-  public inverse(): ElementsChange<T, V> {
-    // TODO: add type
-    const added = new Map();
-    const removed = new Map();
-    const updated = new Map();
+  private static empty() {
+    return new ElementsChange(
+      new Map<string, ExcalidrawElement>(),
+      new Map<string, ExcalidrawElement>(),
+      new Map<string, { from: {}; to: {} }>(),
+    );
+  }
 
-    for (const [id, delta] of this.removed.entries()) {
-      added.set(id, { ...delta, isDeleted: false });
-    }
+  public inverse(): ElementsChange<D> {
+    const added = new Map<string, ExcalidrawElement>();
+    const removed = new Map<string, ExcalidrawElement>();
+    const updated = new Map<string, { from: D; to: D }>();
 
     for (const [id, delta] of this.added.entries()) {
       removed.set(id, { ...delta, isDeleted: true });
+    }
+
+    for (const [id, delta] of this.removed.entries()) {
+      added.set(id, { ...delta, isDeleted: false });
     }
 
     for (const [id, delta] of this.updated.entries()) {
@@ -139,90 +263,7 @@ export class ElementsChange<
   }
 }
 
-type Delta<T> = {
-  [K in keyof T]?: T[K];
-} & { [key: string]: any };
-
-export class AppStateChange<T extends Partial<AppState>> implements Change {
-  private constructor(
-    private readonly added: Delta<T>,
-    private readonly removed: Delta<T>,
-    private readonly updated: {
-      from: Delta<T>;
-      to: Delta<T>;
-    },
-  ) {}
-
-  public static calculate<T extends Partial<AppState>>(
-    prevAppState: T,
-    nextAppState: T,
-  ): AppStateChange<T> {
-    const added: Delta<T> = {};
-    const removed: Delta<T> = {};
-    const updated: {
-      from: Delta<T>;
-      to: Delta<T>;
-    } = {
-      from: {},
-      to: {},
-    };
-
-    for (const [key, prevValue] of Object.entries(prevAppState)) {
-      const nextValue = nextAppState[key as keyof typeof prevAppState];
-      if (nextValue === undefined) {
-        removed[key as keyof Delta<T>] = prevValue;
-        continue;
-      }
-
-      if (prevValue !== nextValue) {
-        updated.from[key as keyof Delta<T>] = prevValue;
-        updated.to[key as keyof Delta<T>] = nextValue;
-      }
-    }
-
-    for (const [key, nextValue] of Object.entries(nextAppState)) {
-      const prevValue = prevAppState[key as keyof typeof nextAppState];
-      if (prevValue === undefined) {
-        added[key as keyof Delta<T>] = nextValue;
-        continue;
-      }
-
-      if (prevValue !== nextValue) {
-        updated.from[key as keyof Delta<T>] = prevValue;
-        updated.to[key as keyof Delta<T>] = nextValue;
-      }
-    }
-
-    return new AppStateChange(added, removed, updated);
-  }
-
-  public inverse(): AppStateChange<T> {
-    const updated = {
-      from: this.updated.to,
-      to: this.updated.from,
-    };
-
-    return new AppStateChange(this.removed, this.added, updated);
-  }
-
-  public apply(appState: AppState): AppState {
-    return {
-      ...appState,
-      ...this.added,
-      ...this.updated.to,
-    };
-  }
-
-  isEmpty(): boolean {
-    return (
-      this.added.size === 0 &&
-      this.removed.size === 0 &&
-      this.updated.from.size === 0 &&
-      this.updated.to.size === 0
-    );
-  }
-}
-
+// TODO: Worth going shallow equal way?
 // function __unsafe__isShallowEqual(prevValue: unknown, nextValue: unknown) {
 //   if (typeof prevValue !== "object" && typeof nextValue !== "object") {
 //     return true;

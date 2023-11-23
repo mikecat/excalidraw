@@ -2,14 +2,14 @@ import { AppState } from "./types";
 import { ExcalidrawElement } from "./element/types";
 import { getDefaultAppState } from "./appState";
 import { arrayToMap, cloneJSON, isShallowEqual } from "./utils";
-import { AppStateChange, ElementsChange } from "./change";
+import { ObjectChange, ElementsChange } from "./change";
 
-function clearElementPropertiesForHistory(element: ExcalidrawElement) {
+function clearDeltaElementProperties(element: Partial<ExcalidrawElement>) {
   const { updated, version, versionNonce, ...strippedElement } = element;
   return strippedElement;
 }
 
-const clearAppStatePropertiesForHistory = (appState: AppState) => {
+const clearAppStateProperties = (appState: AppState) => {
   return {
     name: appState.name,
     editingGroupId: appState.editingGroupId,
@@ -22,26 +22,28 @@ const clearAppStatePropertiesForHistory = (appState: AppState) => {
 
 export class HistoryEntry {
   private constructor(
-    public readonly appStateChange: AppStateChange<
-      ReturnType<typeof clearAppStatePropertiesForHistory>
+    public readonly appStateChange: ObjectChange<
+      ReturnType<typeof clearAppStateProperties>
     >,
     public readonly elementsChange: ElementsChange<
-      ExcalidrawElement["id"],
-      Partial<ReturnType<typeof clearElementPropertiesForHistory>>
+      ReturnType<typeof clearDeltaElementProperties>
     >,
   ) {}
 
   public static create(prevState: HistorySnapshot, nextState: HistorySnapshot) {
-    const appStateChange = AppStateChange.calculate(
+    // TODO: Do this only on detected change
+    const appStateChange = ObjectChange.calculate(
       prevState.appState,
       nextState.appState,
     );
+
+    // TODO: Do this only on detected change
     const elementsChange = ElementsChange.calculate(
       arrayToMap(prevState.elements),
       arrayToMap(nextState.elements),
+      clearDeltaElementProperties,
     );
 
-    // TODO: strip away version, versionNonce and etc.
     return new HistoryEntry(appStateChange.inverse(), elementsChange.inverse());
   }
 
@@ -51,31 +53,33 @@ export class HistoryEntry {
       this.elementsChange.inverse(),
     );
   }
+
+  public isEmpty(): boolean {
+    return this.appStateChange.isEmpty() && this.elementsChange.isEmpty();
+  }
 }
 
 class HistorySnapshot {
   private constructor(
-    public readonly appState: ReturnType<
-      typeof clearAppStatePropertiesForHistory
-    >,
+    public readonly appState: ReturnType<typeof clearAppStateProperties>,
     public readonly elements: readonly ExcalidrawElement[] = [],
   ) {}
 
   public static empty() {
     return new HistorySnapshot(
-      clearAppStatePropertiesForHistory(getDefaultAppState() as any), // TODO: fix
+      clearAppStateProperties(getDefaultAppState() as any), // TODO: fix
     );
   }
 
   public static create(
-    appState: ReturnType<typeof clearAppStatePropertiesForHistory>,
+    appState: ReturnType<typeof clearAppStateProperties>,
     elements: readonly ExcalidrawElement[],
   ) {
     return new HistorySnapshot(appState, elements);
   }
 
   public didChange(
-    nextAppState: ReturnType<typeof clearAppStatePropertiesForHistory>,
+    nextAppState: ReturnType<typeof clearAppStateProperties>,
     nextElements: readonly ExcalidrawElement[],
   ) {
     return (
@@ -85,7 +89,7 @@ class HistorySnapshot {
   }
 
   private didAppStateChange(
-    nextAppState: ReturnType<typeof clearAppStatePropertiesForHistory>,
+    nextAppState: ReturnType<typeof clearAppStateProperties>,
   ) {
     // TODO: linearElementEditor? potentially others?
     return !isShallowEqual(this.appState, nextAppState, {
@@ -161,7 +165,7 @@ class History {
     return null;
   }
 
-  // TODO: unclear if having both like this is correct
+  // TODO: unclear if having both like this is correct, we might need to update it based on latest content
   public redoOnce(): HistoryEntry | null {
     if (!this.redoStack.length) {
       return null;
@@ -193,15 +197,15 @@ class History {
     }
 
     // Optimisation, don't continue if no change detected compared to last snapshot
-    const nextHistoryAppState = clearAppStatePropertiesForHistory(nextAppState);
+    const nextHistoryAppState = clearAppStateProperties(nextAppState);
     if (!this.historySnapshot.didChange(nextHistoryAppState, nextElements)) {
       return;
     }
 
-    // TODO: think about faster way to do this (- faster / cheaper clone / cache)
+    // TODO: think about a better way to do this faster / cheaper clone / cache)
     // Cloning due to potential mutations, as we are calculating history entries out of the latest local snapshot
     const nextHistorySnapshot = HistorySnapshot.create(
-      cloneJSON(clearAppStatePropertiesForHistory(nextAppState)),
+      cloneJSON(nextHistoryAppState),
       cloneJSON(nextElements),
     );
 
@@ -212,11 +216,11 @@ class History {
         nextHistorySnapshot,
       );
 
-      if (this.shouldCreateEntry(nextEntry)) {
+      if (!nextEntry.isEmpty()) {
         this.undoStack.push(nextEntry);
 
         // As a new entry was pushed, we invalidate the redo stack
-        // this.clearRedoStack();
+        this.clearRedoStack();
       }
 
       this.recording = false;
@@ -230,113 +234,9 @@ class History {
   private clearRedoStack() {
     this.redoStack.length = 0;
   }
-
-  private shouldCreateEntry(nextEntry: HistoryEntry): boolean {
-    if (!nextEntry.appStateChange.isEmpty()) {
-      return true;
-    }
-
-    if (!nextEntry.elementsChange.isEmpty()) {
-      return true;
-    }
-
-    return false;
-  }
 }
 
 export default History;
-
-// public inverse(state: HistorySnapshot) {
-//   const inversedElementDeltas = new Map();
-
-//   const prevElementsMap = arrayToMap(state.elements);
-//   // inverse elements deltas
-//   for (const [id, delta] of this.elementsChange) {
-//     const prevElement = prevElementsMap.get(id);
-
-//     if (!prevElement) {
-//       // element was added => inverse is deletion
-//       inversedElementDeltas.set(id, { ...delta, isDeleted: true });
-//       continue;
-//     }
-
-//     const inversedProperties = Object.keys(delta).reduce((acc, key) => {
-//       acc[key] = prevElement[key];
-//       return acc;
-//     }, {});
-
-//     inversedElementDeltas.set(id, {
-//       ...prevElement,
-//       ...inversedProperties,
-//     });
-//   }
-
-//   // inverse appstate delta
-//   // move to a util
-//   const inversedAppStateDelta = Object.keys(this.appStateChange).reduce(
-//     (acc, key) => {
-//       acc[key] = state.appState[key];
-//       return acc;
-//     },
-//     {},
-//   );
-
-//   return new HistoryEntry(inversedAppStateDelta, inversedElementDeltas);
-// }
-
-// type ElementDelta = ReturnType<typeof omitIrrelevantElementDeltaProps>;
-
-// const omitIrrelevantElementDeltaProps = (delta: Partial<ExcalidrawElement>) => {
-//   const {
-//     id,
-//     version,
-//     versionNonce,
-//     updated,
-//     ...strippedDelta
-//   } = delta;
-
-//   return strippedDelta
-// }
-
-// function createInversedElementsDeltas(
-//   prevElements: readonly ExcalidrawElement[],
-//   nextElements: readonly ExcalidrawElement[],
-// ) {
-//   // TODO: Strip it from version, versionNonce and potentially other useless metadata
-//   const inversedDeltas: Map<
-//     ExcalidrawElement["id"],
-//     Partial<ExcalidrawElement>
-//   > = new Map();
-
-//   // Optimizing for hot path
-//   if (!didElementsChange(prevElements, nextElements)) {
-//     return inversedDeltas;
-//   }
-
-//   const prevElementsMap = arrayToMap(prevElements);
-
-//   for (const element of nextElements) {
-//     const cachedElement = prevElementsMap.get(element.id);
-
-//     if (!cachedElement) {
-//       // element was added => inverse is deletion
-//       inversedDeltas.set(element.id, { isDeleted: true });
-//       continue;
-//     }
-
-//     if (cachedElement.versionNonce !== element.versionNonce) {
-//       const strippedElement = clearElementPropertiesForHistory(element);
-//       // element was updated (including "soft" deletion) => inverse are previous values of modified properties
-//       const elementDelta = __unsafe__inversedDeltasGenerator(
-//         cachedElement,
-//         strippedElement,
-//       );
-//       inversedDeltas.set(element.id, elementDelta);
-//     }
-//   }
-
-//   return inversedDeltas;
-// }
 
 // TODO: still needed?
 // if (
