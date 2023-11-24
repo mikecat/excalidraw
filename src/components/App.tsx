@@ -2071,6 +2071,9 @@ class App extends React.Component<AppProps, AppState> {
         ),
       );
     }
+
+    // TODO: wrap in requestIdleCallback when available
+    // Perform history diffing when idle
     this.history.record(this.state, this.scene.getElementsIncludingDeleted());
 
     // Do not notify consumers if we're still loading the scene. Among other

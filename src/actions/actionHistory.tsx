@@ -38,6 +38,7 @@ const writeData = (
       appState: nextAppState,
       elements: nextElements,
       commitToHistory,
+      syncHistory: true,
     };
   }
   return { commitToHistory };

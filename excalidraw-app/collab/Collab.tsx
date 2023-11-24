@@ -457,7 +457,7 @@ class Collab extends PureComponent<Props, CollabState> {
       // this.excalidrawAPI.history.clear();
       this.excalidrawAPI.updateScene({
         elements,
-        commitToHistory: true,
+        commitToHistory: false,
         isRemoteUpdate: true, //  TODO: is it really?
       });
 
@@ -657,8 +657,8 @@ class Collab extends PureComponent<Props, CollabState> {
   ) => {
     this.excalidrawAPI.updateScene({
       elements,
-      commitToHistory: !!init,
-      isRemoteUpdate: true
+      commitToHistory: false,
+      isRemoteUpdate: true,
     });
 
     // We haven't yet implemented multiplayer undo functionality, so we clear the undo stack

@@ -2,9 +2,9 @@ import { AppState } from "./types";
 import { ExcalidrawElement } from "./element/types";
 import { getDefaultAppState } from "./appState";
 import { arrayToMap, cloneJSON, isShallowEqual } from "./utils";
-import { ObjectChange, ElementsChange } from "./change";
+import { AppStateIncrement, ElementsIncrement } from "./change";
 
-function clearDeltaElementProperties(element: Partial<ExcalidrawElement>) {
+function clearElementProperties(element: Partial<ExcalidrawElement>) {
   const { updated, version, versionNonce, ...strippedElement } = element;
   return strippedElement;
 }
@@ -22,26 +22,22 @@ const clearAppStateProperties = (appState: AppState) => {
 
 export class HistoryEntry {
   private constructor(
-    public readonly appStateChange: ObjectChange<
-      ReturnType<typeof clearAppStateProperties>
-    >,
-    public readonly elementsChange: ElementsChange<
-      ReturnType<typeof clearDeltaElementProperties>
-    >,
+    public readonly appStateChange: AppStateIncrement,
+    public readonly elementsChange: ElementsIncrement
   ) {}
 
   public static create(prevState: HistorySnapshot, nextState: HistorySnapshot) {
     // TODO: Do this only on detected change
-    const appStateChange = ObjectChange.calculate(
+    const appStateChange = AppStateIncrement.calculate(
       prevState.appState,
       nextState.appState,
     );
 
     // TODO: Do this only on detected change
-    const elementsChange = ElementsChange.calculate(
+    const elementsChange = ElementsIncrement.calculate(
       arrayToMap(prevState.elements),
       arrayToMap(nextState.elements),
-      clearDeltaElementProperties,
+      // clearElementProperties as any, // TODO: fix type
     );
 
     return new HistoryEntry(appStateChange.inverse(), elementsChange.inverse());
@@ -123,6 +119,9 @@ class History {
   private recording: boolean = true;
   private capturing: boolean = false;
 
+  // TODO: limit empty commands
+  // TODO: think on what limit to put in both
+  // TODO: when empty, disable the buttons
   private undoStack: HistoryEntry[] = [];
   private redoStack: HistoryEntry[] = [];
 
@@ -203,6 +202,7 @@ class History {
     }
 
     // TODO: think about a better way to do this faster / cheaper clone / cache)
+    // TODO: Maybe custom clone based on changed elements (first clone everything, but then just what changed)?
     // Cloning due to potential mutations, as we are calculating history entries out of the latest local snapshot
     const nextHistorySnapshot = HistorySnapshot.create(
       cloneJSON(nextHistoryAppState),
@@ -304,6 +304,8 @@ export default History;
  *  because the action potentially mutates appState/elements before storing
  *  it.
  */
-// public setCurrentState(nextAppState: AppState, nextElements: readonly ExcalidrawElement[]) {
-
+// setCurrentState(appState: AppState, elements: readonly ExcalidrawElement[]) {
+//   this.lastEntry = this.hydrateHistoryEntry(
+//     this.generateEntry(appState, elements),
+//   );
 // }
