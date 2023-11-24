@@ -5,12 +5,11 @@ import { AppState } from "./types";
 /**
  * Represents the difference between two `T` objects, enriched with a `string` accessor.
  */
-type Delta<T> = {
-  [K in keyof T]?: T[K];
-} & { [key: string]: unknown };
+type Delta<T> = Partial<T> & { [key: string]: any };
 
 /**
  * Represents a change made to an object, encapsulating both `from` and `before` deltas.
+ * Keeping it as pure object (without transient state, side-effects, etc.), so we don't have to instantiate it on load.
  */
 class Change<T> {
   private constructor(
@@ -59,30 +58,25 @@ class Change<T> {
       const nextValue = nextObject[key as keyof T];
 
       // TODO: Worth going also shallow equal way?
+      //  - it would mean O(n^3) so we would have to be careful
       if (prevValue !== nextValue) {
-        // TODO: fix types
-        from[key] = deltaModifier
-          ? deltaModifier(prevValue as Delta<T>)
-          : prevValue;
-
-        to[key] = deltaModifier
-          ? deltaModifier(nextValue as Delta<T>)
-          : nextValue;
+        from[key as keyof T] = prevValue;
+        to[key as keyof T] = nextValue;
       }
     }
-
-    return new Change(from, to);
+    return Change.create(from, to, deltaModifier);
   }
 
   private static empty() {
     return new Change({}, {});
   }
 
-  public isEmpty(): boolean {
-    return !Object.keys(this.from).length && !Object.keys(this.to).length;
+  public static isEmpty<T>(change: Change<T>): boolean {
+    return !Object.keys(change.from).length && !Object.keys(change.to).length;
   }
 }
 
+// TODO: I also might need clone (with modifier)
 /**
  * Encapsulates the modifications captured as `Change`/s.
  */
@@ -128,7 +122,7 @@ export class AppStateIncrement implements Increment<AppState> {
   }
 
   public isEmpty(): boolean {
-    return this.change.isEmpty();
+    return Change.isEmpty(this.change);
   }
 }
 
@@ -166,7 +160,7 @@ export class ElementsIncrement
       if (!nextElement) {
         const { id, ...delta } = prevElement;
         const from = { ...delta, isDeleted: false } as T;
-        const to = { ...delta, isDeleted: true } as T;
+        const to = { isDeleted: true } as T;
 
         const change = Change.create(from, to, deltaModifier);
         changes.set(prevElement.id, change);
@@ -180,7 +174,7 @@ export class ElementsIncrement
       // Element got added
       if (!prevElement) {
         const { id, ...delta } = nextElement;
-        const from = { ...delta, isDeleted: true } as T;
+        const from = { isDeleted: true } as T;
         const to = { ...delta, isDeleted: false } as T;
 
         const change = Change.create(from, to, deltaModifier);
@@ -202,7 +196,8 @@ export class ElementsIncrement
           deltaModifier as (elementDelta: Delta<ExcalidrawElement>) => T, // TODO: recheck this type, it's weird
         );
 
-        if (!change.isEmpty()) {
+        if (!Change.isEmpty(change)) {
+          // TODO: Could shallow equal here instead of going shallow equal rabit whole
           changes.set(nextElement.id, change as Change<T>);
         }
       }
@@ -234,7 +229,6 @@ export class ElementsIncrement
       if (existingElement) {
         const { to } = change;
 
-        // Force to generate a new element version
         elements.set(id, newElementWith(existingElement, to, true));
       }
     }

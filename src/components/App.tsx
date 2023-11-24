@@ -254,6 +254,7 @@ import {
   muteFSAbortError,
   isTestEnv,
   easeOut,
+  arrayToMap,
 } from "../utils";
 import {
   embeddableURLValidator,
@@ -2073,8 +2074,12 @@ class App extends React.Component<AppProps, AppState> {
     }
 
     // TODO: wrap in requestIdleCallback when available
+    // TODO: remove arrayToMap once we have fractional indices
     // Perform history diffing when idle
-    this.history.record(this.state, this.scene.getElementsIncludingDeleted());
+    this.history.record(
+      this.state,
+      arrayToMap(this.scene.getElementsIncludingDeleted()),
+    );
 
     // Do not notify consumers if we're still loading the scene. Among other
     // potential issues, this fixes a case where the tab isn't focused during
@@ -2922,7 +2927,7 @@ class App extends React.Component<AppProps, AppState> {
       }
 
       if (sceneData.isRemoteUpdate) {
-        this.history.captureSnapshot();
+        this.history.resumeCapturing();
       }
 
       if (sceneData.appState) {

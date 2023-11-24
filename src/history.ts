@@ -1,8 +1,9 @@
 import { AppState } from "./types";
 import { ExcalidrawElement } from "./element/types";
 import { getDefaultAppState } from "./appState";
-import { arrayToMap, cloneJSON, isShallowEqual } from "./utils";
+import { cloneJSON, isShallowEqual } from "./utils";
 import { AppStateIncrement, ElementsIncrement } from "./change";
+import { deepCopyElement } from "./element/newElement";
 
 function clearElementProperties(element: Partial<ExcalidrawElement>) {
   const { updated, version, versionNonce, ...strippedElement } = element;
@@ -23,7 +24,7 @@ const clearAppStateProperties = (appState: AppState) => {
 export class HistoryEntry {
   private constructor(
     public readonly appStateChange: AppStateIncrement,
-    public readonly elementsChange: ElementsIncrement
+    public readonly elementsChange: ElementsIncrement,
   ) {}
 
   public static create(prevState: HistorySnapshot, nextState: HistorySnapshot) {
@@ -35,9 +36,9 @@ export class HistoryEntry {
 
     // TODO: Do this only on detected change
     const elementsChange = ElementsIncrement.calculate(
-      arrayToMap(prevState.elements),
-      arrayToMap(nextState.elements),
-      // clearElementProperties as any, // TODO: fix type
+      prevState.elements,
+      nextState.elements,
+      clearElementProperties,
     );
 
     return new HistoryEntry(appStateChange.inverse(), elementsChange.inverse());
@@ -58,7 +59,7 @@ export class HistoryEntry {
 class HistorySnapshot {
   private constructor(
     public readonly appState: ReturnType<typeof clearAppStateProperties>,
-    public readonly elements: readonly ExcalidrawElement[] = [],
+    public readonly elements: Map<string, ExcalidrawElement> = new Map(),
   ) {}
 
   public static empty() {
@@ -69,22 +70,12 @@ class HistorySnapshot {
 
   public static create(
     appState: ReturnType<typeof clearAppStateProperties>,
-    elements: readonly ExcalidrawElement[],
+    elements: Map<string, ExcalidrawElement>,
   ) {
     return new HistorySnapshot(appState, elements);
   }
 
-  public didChange(
-    nextAppState: ReturnType<typeof clearAppStateProperties>,
-    nextElements: readonly ExcalidrawElement[],
-  ) {
-    return (
-      this.didAppStateChange(nextAppState) ||
-      this.didElementsChange(nextElements)
-    );
-  }
-
-  private didAppStateChange(
+  public didAppStateChange(
     nextAppState: ReturnType<typeof clearAppStateProperties>,
   ) {
     // TODO: linearElementEditor? potentially others?
@@ -94,15 +85,17 @@ class HistorySnapshot {
     });
   }
 
-  private didElementsChange(nextElements: readonly ExcalidrawElement[]) {
-    if (this.elements.length !== nextElements.length) {
+  public didElementsChange(nextElements: Map<string, ExcalidrawElement>) {
+    if (this.elements.size !== nextElements.size) {
       return true;
     }
 
     // loop from right to left as changes are likelier to happen on new elements
-    for (let i = nextElements.length - 1; i > -1; i--) {
-      const prev = this.elements[i];
-      const next = nextElements[i];
+    const keys = Array.from(nextElements.keys()).reverse();
+
+    for (const key of keys) {
+      const prev = this.elements.get(key);
+      const next = nextElements.get(key);
       if (
         !prev ||
         !next ||
@@ -112,6 +105,29 @@ class HistorySnapshot {
         return true;
       }
     }
+  }
+
+  public elementsStructuralClone(nextElements: Map<string, ExcalidrawElement>) {
+    const clonedElements = new Map();
+
+    // Assign existing elements
+    for (const [id, element] of this.elements.entries()) {
+      clonedElements.set(id, element);
+    }
+
+    // Update cloned elements
+    for (const [id, nextElement] of nextElements.entries()) {
+      const element = clonedElements.get(id);
+
+      if (
+        !element ||
+        (element && element.versionNonce !== nextElement.versionNonce)
+      ) {
+        clonedElements.set(id, deepCopyElement(nextElement));
+      }
+    }
+
+    return clonedElements;
   }
 }
 
@@ -139,9 +155,9 @@ class History {
     this.recording = true;
   }
 
-  // Capture history snapshot, but don't create a history entry
+  // Capture history snapshot, but don't record a history entry
   // (unless recording is `true`, which captures snapshot on its own already)
-  public captureSnapshot() {
+  public resumeCapturing() {
     this.capturing = true;
   }
 
@@ -188,25 +204,39 @@ class History {
   // TODO: should this happen in requestIdleCallback or no need?
   public record(
     nextAppState: AppState,
-    nextElements: readonly ExcalidrawElement[],
+    nextElements: Map<string, ExcalidrawElement>,
   ) {
-    // Optimisation, continue only if we are recording or capturing
+    // Continue only if we are recording or capturing
     if (!this.recording && !this.capturing) {
       return;
     }
 
-    // Optimisation, don't continue if no change detected compared to last snapshot
+    // TODO: should encapsulate a bit
+
+    // Not storing everything, just history relevant props
     const nextHistoryAppState = clearAppStateProperties(nextAppState);
-    if (!this.historySnapshot.didChange(nextHistoryAppState, nextElements)) {
+    const appStateChanged =
+      this.historySnapshot.didAppStateChange(nextHistoryAppState);
+
+    const elementsChanged =
+      this.historySnapshot.didElementsChange(nextElements);
+
+    // Nothing has changed, so there is no point of continuing further
+    if (!appStateChanged && !elementsChanged) {
       return;
     }
 
-    // TODO: think about a better way to do this faster / cheaper clone / cache)
-    // TODO: Maybe custom clone based on changed elements (first clone everything, but then just what changed)?
-    // Cloning due to potential mutations, as we are calculating history entries out of the latest local snapshot
+    // Optimisations, clone again only if there was really a change
+    let nextHistoryElements = this.historySnapshot.elements;
+    if (elementsChanged) {
+      // I do not clone, just update in situ
+      nextHistoryElements =
+        this.historySnapshot.elementsStructuralClone(nextElements);
+    }
+
     const nextHistorySnapshot = HistorySnapshot.create(
-      cloneJSON(nextHistoryAppState),
-      cloneJSON(nextElements),
+      nextHistoryAppState,
+      nextHistoryElements,
     );
 
     // Only create history entry if we are recording

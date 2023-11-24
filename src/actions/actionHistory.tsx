@@ -27,6 +27,7 @@ const writeData = (
     }
 
     const nextAppState = data.appStateChange.apply(appState);
+    // TODO: just keep the map once we have fractional indices
     const nextElements = Array.from(
       data.elementsChange.apply(arrayToMap(prevElements)).values(),
     );
