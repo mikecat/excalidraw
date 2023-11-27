@@ -35,6 +35,7 @@ import type { IMAGE_MIME_TYPES, MIME_TYPES } from "./constants";
 import { ContextMenuItems } from "./components/ContextMenu";
 import { SnapLine } from "./snapping";
 import { Merge, ValueOf } from "./utility-types";
+import { IStore } from "./store";
 
 export type Point = Readonly<RoughPoint>;
 
@@ -617,6 +618,13 @@ export type ExcalidrawImperativeAPI = {
   >["getSceneElementsIncludingDeleted"];
   history: {
     clear: InstanceType<typeof App>["resetHistory"];
+  };
+  /**
+   * @experimental this API is experimental and subject to change
+   */
+  store: {
+    clear: IStore["clear"];
+    listen: IStore["listen"];
   };
   scrollToContent: InstanceType<typeof App>["scrollToContent"];
   getSceneElements: InstanceType<typeof App>["getSceneElements"];

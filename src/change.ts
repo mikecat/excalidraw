@@ -3,50 +3,38 @@ import { ExcalidrawElement } from "./element/types";
 import { AppState } from "./types";
 
 /**
- * Represents the difference between two `T` objects, enriched with a `string` accessor.
- */
-type Delta<T> = Partial<T> & { [key: string]: any };
-
-/**
- * Represents a change made to an object, encapsulating both `from` and `before` deltas.
+ * Represents the difference between two `T` objects.
+ *
  * Keeping it as pure object (without transient state, side-effects, etc.), so we don't have to instantiate it on load.
  */
-class Change<T> {
+class Delta<T> {
   private constructor(
-    public readonly from: Delta<T>,
-    public readonly to: Delta<T>,
+    public readonly from: Partial<T>,
+    public readonly to: Partial<T>,
   ) {}
 
-  public static create<T>(
-    from: Delta<T>,
-    to: Delta<T>,
-    deltaModifier?: (elementDelta: Delta<T>) => Delta<T>,
-  ) {
-    const nextFrom = deltaModifier ? deltaModifier(from) : from;
-    const nextTo = deltaModifier ? deltaModifier(to) : to;
-
-    return new Change(nextFrom, nextTo);
+  public static create<T>(from: Partial<T>, to: Partial<T>) {
+    return new Delta(from, to);
   }
 
   /**
-   * Calculates the changes between two objects and returns an Change instance.
+   * Calculates the delta between two objects.
    *
    * @param prevObject - The previous state of the object.
    * @param nextObject - The next state of the object.
    *
-   * @returns Change instance encapsulating the deltas between `prevObject` and `nextObject`.
+   * @returns new Delta instance.
    */
   public static calculate<T extends Object>(
     prevObject: T,
     nextObject: T,
-    deltaModifier?: (elementDelta: Delta<T>) => Delta<T>,
-  ): Change<T> {
+  ): Delta<T> {
     if (prevObject === nextObject) {
-      return Change.empty();
+      return Delta.empty();
     }
 
-    const from = {} as Delta<T>;
-    const to = {} as Delta<T>;
+    const from = {} as Partial<T>;
+    const to = {} as Partial<T>;
 
     const unionOfKeys = new Set([
       ...Object.keys(prevObject),
@@ -64,27 +52,27 @@ class Change<T> {
         to[key as keyof T] = nextValue;
       }
     }
-    return Change.create(from, to, deltaModifier);
+    return Delta.create(from, to);
   }
 
-  private static empty() {
-    return new Change({}, {});
+  public static empty() {
+    return new Delta({}, {});
   }
 
-  public static isEmpty<T>(change: Change<T>): boolean {
-    return !Object.keys(change.from).length && !Object.keys(change.to).length;
+  public static isEmpty<T>(delta: Delta<T>): boolean {
+    return !Object.keys(delta.from).length && !Object.keys(delta.to).length;
   }
 }
 
-// TODO: I also might need clone (with modifier)
+// TODO: I also might need a clone (with modifier)
 /**
- * Encapsulates the modifications captured as `Change`/s.
+ * Encapsulates the modifications captured as `Delta`/s.
  */
-interface Increment<T> {
+interface Change<T> {
   /**
-   * Inverses the `Delta`s while creating a new `Change` instance.
+   * Inverses the `Delta`s inside while creating a new `Change`.
    */
-  inverse(): Increment<T>;
+  inverse(): Change<T>;
 
   /**
    * Applies the `Change` to the previous state.
@@ -92,65 +80,66 @@ interface Increment<T> {
   apply(previous: T): T;
 
   /**
-   * Checks whether there are actually any `Delta`s in the `Change`.x`
+   * Checks whether there are actually `Delta`s.
    */
   isEmpty(): boolean;
 }
 
-export class AppStateIncrement implements Increment<AppState> {
-  private constructor(private readonly change: Change<AppState>) {}
+export class AppStateChange implements Change<AppState> {
+  private constructor(private readonly delta: Delta<AppState>) {}
 
-  public static calculate<T extends Delta<AppState>>(
-    prevObject: T,
-    nextObject: T,
-    deltaModifier?: (elementDelta: Delta<T>) => Delta<T>,
-  ): AppStateIncrement {
-    const change = Change.calculate(prevObject, nextObject, deltaModifier);
-    return new AppStateIncrement(change);
+  public static calculate<T extends Partial<AppState>>(
+    prevAppState: T,
+    nextAppState: T,
+  ): AppStateChange {
+    const delta = Delta.calculate(prevAppState, nextAppState);
+    return new AppStateChange(delta);
   }
 
-  public inverse(): AppStateIncrement {
-    const inversedChange = Change.create(this.change.to, this.change.from);
-    return new AppStateIncrement(inversedChange);
+  public static empty() {
+    return new AppStateChange(Delta.create({}, {}));
+  }
+
+  public inverse(): AppStateChange {
+    const inversedDelta = Delta.create(this.delta.to, this.delta.from);
+    return new AppStateChange(inversedDelta);
   }
 
   public apply(appState: AppState): AppState {
     return {
       ...appState,
-      ...this.change.to,
+      ...this.delta.to,
     };
   }
 
   public isEmpty(): boolean {
-    return Change.isEmpty(this.change);
+    return Delta.isEmpty(this.delta);
   }
 }
 
-export class ElementsIncrement
-  implements Increment<Map<string, ExcalidrawElement>>
-{
+export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
   private constructor(
-    private readonly changes: Map<string, Change<ExcalidrawElement>>,
+    // TODO: consider being smarter here and squash the same deltas
+    private readonly deltas: Map<string, Delta<ExcalidrawElement>>,
   ) {}
 
   /**
-   * Calculates the change between previous and next sets of elements.
+   * Calculates the `Delta`s between the previous and next set of elements.
    *
    * @param prevElements - Map representing the previous state of elements.
    * @param nextElements - Map representing the next state of elements.
    *
-   * @returns `ElementsChange` instance representing the delta changes between the two sets of elements.
+   * @returns `ElementsChange` instance representing the `Delta` changes between the two sets of elements.
    */
   public static calculate<T extends ExcalidrawElement>(
     prevElements: Map<string, ExcalidrawElement>,
     nextElements: Map<string, ExcalidrawElement>,
-    deltaModifier?: (elementDelta: Delta<T>) => Delta<T>,
-  ): ElementsIncrement {
+  ): ElementsChange {
     if (prevElements === nextElements) {
-      return ElementsIncrement.empty();
+      return ElementsChange.empty();
     }
 
-    const changes = new Map<string, Change<T>>();
+    const deltas = new Map<string, Delta<T>>();
 
     // TODO: this might be needed only in same edge cases, like during persist, when isDeleted elements are removed
     for (const [zIndex, prevElement] of prevElements.entries()) {
@@ -158,12 +147,12 @@ export class ElementsIncrement
 
       // Element got removed
       if (!nextElement) {
-        const { id, ...delta } = prevElement;
-        const from = { ...delta, isDeleted: false } as T;
+        const { id, ...partial } = prevElement;
+        const from = { ...partial, isDeleted: false } as T;
         const to = { isDeleted: true } as T;
 
-        const change = Change.create(from, to, deltaModifier);
-        changes.set(prevElement.id, change);
+        const delta = Delta.create<T>(from, to);
+        deltas.set(prevElement.id, delta);
       }
     }
 
@@ -173,12 +162,12 @@ export class ElementsIncrement
 
       // Element got added
       if (!prevElement) {
-        const { id, ...delta } = nextElement;
+        const { id, ...partial } = nextElement;
         const from = { isDeleted: true } as T;
-        const to = { ...delta, isDeleted: false } as T;
+        const to = { ...partial, isDeleted: false } as T;
 
-        const change = Change.create(from, to, deltaModifier);
-        changes.set(nextElement.id, change);
+        const delta = Delta.create<T>(from, to);
+        deltas.set(nextElement.id, delta);
 
         continue;
       }
@@ -190,44 +179,50 @@ export class ElementsIncrement
         // - we do this only on changed elements
         // - # of element's properties is reasonably small
         // - otherwise we would have to emit deltas on user actions & apply them on every frame
-        const change = Change.calculate(
+        const delta = Delta.calculate<ExcalidrawElement>(
           prevElement,
           nextElement,
-          deltaModifier as (elementDelta: Delta<ExcalidrawElement>) => T, // TODO: recheck this type, it's weird
         );
 
-        if (!Change.isEmpty(change)) {
-          // TODO: Could shallow equal here instead of going shallow equal rabit whole
-          changes.set(nextElement.id, change as Change<T>);
+        const clearedDelta = Delta.create<ExcalidrawElement>(
+          ElementsChange.clearIrrelevantProps(delta.from),
+          ElementsChange.clearIrrelevantProps(delta.to),
+        );
+
+        // Make sure there are at least some changes (except changes to irrelevant data)
+        if (!Delta.isEmpty(clearedDelta)) {
+          // TODO: Could shallow equal here instead of going shallow equal rabbit hole, but better to fix it at the root
+          deltas.set(nextElement.id, delta as Delta<T>);
         }
       }
     }
 
-    return new ElementsIncrement(changes);
+    return new ElementsChange(deltas);
   }
 
-  private static empty() {
-    return new ElementsIncrement(new Map());
+  public static empty() {
+    return new ElementsChange(new Map());
   }
 
-  public inverse(): ElementsIncrement {
-    const changes = new Map<string, Change<ExcalidrawElement>>();
+  public inverse(): ElementsChange {
+    const deltas = new Map<string, Delta<ExcalidrawElement>>();
 
-    for (const [id, change] of this.changes.entries()) {
-      changes.set(id, Change.create(change.to, change.from));
+    for (const [id, delta] of this.deltas.entries()) {
+      deltas.set(id, Delta.create(delta.to, delta.from));
     }
 
-    return new ElementsIncrement(changes);
+    return new ElementsChange(deltas);
   }
 
   public apply(
     elements: Map<string, ExcalidrawElement>,
   ): Map<string, ExcalidrawElement> {
-    for (const [id, change] of this.changes.entries()) {
+    for (const [id, delta] of this.deltas.entries()) {
       const existingElement = elements.get(id);
 
       if (existingElement) {
-        const { to } = change;
+        // Make sure to remove irrelevant props when applying the delta
+        const to = ElementsChange.clearIrrelevantProps(delta.to);
 
         elements.set(id, newElementWith(existingElement, to, true));
       }
@@ -237,7 +232,12 @@ export class ElementsIncrement
   }
 
   public isEmpty(): boolean {
-    // TODO: might need to go through all changes and check
-    return this.changes.size === 0;
+    // TODO: might need to go through all deltas and check for emptiness
+    return this.deltas.size === 0;
+  }
+
+  private static clearIrrelevantProps(delta: Partial<ExcalidrawElement>) {
+    const { updated, version, versionNonce, ...clearedDelta } = delta;
+    return clearedDelta;
   }
 }

@@ -2,7 +2,7 @@ import { Action, ActionResult } from "./types";
 import { UndoIcon, RedoIcon } from "../components/icons";
 import { ToolButton } from "../components/ToolButton";
 import { t } from "../i18n";
-import History, { HistoryEntry } from "../history";
+import { History, HistoryEntry } from "../history";
 import { ExcalidrawElement } from "../element/types";
 import { AppState } from "../types";
 import { KEYS } from "../keys";
@@ -28,11 +28,12 @@ const writeData = (
 
     const nextAppState = data.appStateChange.apply(appState);
     // TODO: just keep the map once we have fractional indices
+    // TODO: apply z-index deltas differently
     const nextElements = Array.from(
       data.elementsChange.apply(arrayToMap(prevElements)).values(),
     );
 
-    // TODO: valid? probably yes
+    // TODO: uncomment and test
     // fixBindingsAfterDeletion(elements, deletedElements);
 
     return {

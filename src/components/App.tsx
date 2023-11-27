@@ -180,7 +180,7 @@ import {
   isSelectedViaGroup,
   selectGroupsForSelectedElements,
 } from "../groups";
-import History from "../history";
+import { History } from "../history";
 import { defaultLang, getLanguage, languages, setLanguage, t } from "../i18n";
 import {
   CODES,
@@ -376,6 +376,7 @@ import {
   setCursorForShape,
 } from "../cursor";
 import { Emitter } from "../emitter";
+import { Store } from "../store";
 
 const AppContext = React.createContext<AppClassProperties>(null!);
 const AppPropsContext = React.createContext<AppProps>(null!);
@@ -495,6 +496,7 @@ class App extends React.Component<AppProps, AppState> {
   public library: AppClassProperties["library"];
   public libraryItemsFromStorage: LibraryItems | undefined;
   public id: string;
+  private store: Store;
   private history: History;
   private excalidrawContainerValue: {
     container: HTMLDivElement | null;
@@ -572,6 +574,9 @@ class App extends React.Component<AppProps, AppState> {
     this.rc = rough.canvas(this.canvas);
     this.renderer = new Renderer(this.scene);
 
+    this.store = new Store();
+    this.history = new History();
+
     if (excalidrawAPI) {
       const api: ExcalidrawImperativeAPI = {
         updateScene: this.updateScene,
@@ -579,6 +584,10 @@ class App extends React.Component<AppProps, AppState> {
         addFiles: this.addFiles,
         resetScene: this.resetScene,
         getSceneElementsIncludingDeleted: this.getSceneElementsIncludingDeleted,
+        store: {
+          clear: this.store.clear,
+          listen: this.store.listen,
+        },
         history: {
           clear: this.resetHistory,
         },
@@ -614,7 +623,7 @@ class App extends React.Component<AppProps, AppState> {
       scene: this.scene,
       onSceneUpdated: this.onSceneUpdated,
     });
-    this.history = new History();
+
     this.actionManager = new ActionManager(
       this.syncActionResult,
       () => this.state,
@@ -622,7 +631,6 @@ class App extends React.Component<AppProps, AppState> {
       this,
     );
     this.actionManager.registerAll(actions);
-
     this.actionManager.registerAction(createUndoAction(this.history));
     this.actionManager.registerAction(createRedoAction(this.history));
   }
@@ -1462,7 +1470,7 @@ class App extends React.Component<AppProps, AppState> {
         });
         this.scene.replaceAllElements(actionResult.elements);
         if (actionResult.commitToHistory) {
-          this.history.resumeRecording();
+          this.store.resumeRecording();
         }
       }
 
@@ -1475,7 +1483,7 @@ class App extends React.Component<AppProps, AppState> {
 
       if (actionResult.appState || editingElement || this.state.contextMenu) {
         if (actionResult.commitToHistory) {
-          this.history.resumeRecording();
+          this.store.resumeRecording();
         }
 
         let viewModeEnabled = actionResult?.appState?.viewModeEnabled || false;
@@ -1550,6 +1558,10 @@ class App extends React.Component<AppProps, AppState> {
     this.history.clear();
   };
 
+  private resetStore = () => {
+    this.store.clear();
+  };
+
   /**
    * Resets scene & history.
    * ! Do not use to clear scene user action !
@@ -1562,6 +1574,7 @@ class App extends React.Component<AppProps, AppState> {
         isLoading: opts?.resetLoadingState ? false : state.isLoading,
         theme: this.state.theme,
       }));
+      this.resetStore();
       this.resetHistory();
     },
   );
@@ -1646,6 +1659,7 @@ class App extends React.Component<AppProps, AppState> {
     // seems faster even in browsers that do fire the loadingdone event.
     this.fonts.loadFontsForElements(scene.elements);
 
+    this.resetStore();
     this.resetHistory();
     this.syncActionResult({
       ...scene,
@@ -1739,8 +1753,13 @@ class App extends React.Component<AppProps, AppState> {
           configurable: true,
           value: this.history,
         },
+        // TODO: add store
       });
     }
+
+    this.store.listen((...args) => {
+      this.history.record(...args);
+    });
 
     this.scene.addCallback(this.onSceneUpdated);
     this.addEventListeners();
@@ -1797,6 +1816,7 @@ class App extends React.Component<AppProps, AppState> {
     this.library.destroy();
     this.laserPathManager.destroy();
     this.onChangeEmitter.destroy();
+    this.store.destroy();
     ShapeCache.destroy();
     SnapCache.destroy();
     clearTimeout(touchTimeout);
@@ -2073,13 +2093,10 @@ class App extends React.Component<AppProps, AppState> {
       );
     }
 
-    // TODO: wrap in requestIdleCallback when available
-    // TODO: remove arrayToMap once we have fractional indices
-    // Perform history diffing when idle
-    this.history.record(
-      this.state,
-      arrayToMap(this.scene.getElementsIncludingDeleted()),
-    );
+    // TODO: we could wrap this in requestIdleCallback when available
+    // - specify timeout 0 (so it is triggered immediately)
+    // - debounce on every frame (16ms?)
+    this.store.capture(this.scene.getElementsMapIncludingDeleted(), this.state);
 
     // Do not notify consumers if we're still loading the scene. Among other
     // potential issues, this fixes a case where the tab isn't focused during
@@ -2417,7 +2434,7 @@ class App extends React.Component<AppProps, AppState> {
       this.files = { ...this.files, ...opts.files };
     }
 
-    this.history.resumeRecording();
+    this.store.resumeRecording();
 
     const nextElementsToSelect =
       excludeElementsInFramesFromSelection(newElements);
@@ -2658,7 +2675,7 @@ class App extends React.Component<AppProps, AppState> {
       PLAIN_PASTE_TOAST_SHOWN = true;
     }
 
-    this.history.resumeRecording();
+    this.store.resumeRecording();
   }
 
   setAppState: React.Component<any, AppState>["setState"] = (
@@ -2923,11 +2940,11 @@ class App extends React.Component<AppProps, AppState> {
       isRemoteUpdate?: SceneData["isRemoteUpdate"];
     }) => {
       if (sceneData.commitToHistory) {
-        this.history.resumeRecording();
+        this.store.resumeRecording();
       }
 
       if (sceneData.isRemoteUpdate) {
-        this.history.resumeCapturing();
+        this.store.skipChangesCalculation();
       }
 
       if (sceneData.appState) {
@@ -3136,7 +3153,7 @@ class App extends React.Component<AppProps, AppState> {
                 this.state.editingLinearElement.elementId !==
                   selectedElements[0].id
               ) {
-                this.history.resumeRecording();
+                this.store.resumeRecording();
                 this.setState({
                   editingLinearElement: new LinearElementEditor(
                     selectedElement,
@@ -3528,7 +3545,7 @@ class App extends React.Component<AppProps, AppState> {
           ]);
         }
         if (!isDeleted || isExistingElement) {
-          this.history.resumeRecording();
+          this.store.resumeRecording();
         }
 
         this.setState({
@@ -3820,7 +3837,7 @@ class App extends React.Component<AppProps, AppState> {
         (!this.state.editingLinearElement ||
           this.state.editingLinearElement.elementId !== selectedElements[0].id)
       ) {
-        this.history.resumeRecording();
+        this.store.resumeRecording();
         this.setState({
           editingLinearElement: new LinearElementEditor(
             selectedElements[0],
@@ -5234,7 +5251,7 @@ class App extends React.Component<AppProps, AppState> {
           const ret = LinearElementEditor.handlePointerDown(
             event,
             this.state,
-            this.history,
+            this.store,
             pointerDownState.origin,
             linearElementEditor,
           );
@@ -6727,7 +6744,7 @@ class App extends React.Component<AppProps, AppState> {
 
       if (isLinearElement(draggingElement)) {
         if (draggingElement!.points.length > 1) {
-          this.history.resumeRecording();
+          this.store.resumeRecording();
         }
         const pointerCoords = viewportCoordsToSceneCoords(
           childEvent,
@@ -6962,7 +6979,7 @@ class App extends React.Component<AppProps, AppState> {
       }
 
       if (resizingElement) {
-        this.history.resumeRecording();
+        this.store.resumeRecording();
       }
 
       if (resizingElement && isInvisiblySmallElement(resizingElement)) {
@@ -7265,7 +7282,7 @@ class App extends React.Component<AppProps, AppState> {
         activeTool.type !== "selection" ||
         isSomeElementSelected(this.scene.getNonDeletedElements(), this.state)
       ) {
-        this.history.resumeRecording();
+        this.store.resumeRecording();
       }
 
       if (pointerDownState.drag.hasOccurred || isResizing || isRotating) {
@@ -7371,7 +7388,7 @@ class App extends React.Component<AppProps, AppState> {
       return ele;
     });
 
-    this.history.resumeRecording();
+    this.store.resumeRecording();
     this.scene.replaceAllElements(elements);
   };
 
