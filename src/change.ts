@@ -1,6 +1,7 @@
 import { newElementWith } from "./element/mutateElement";
 import { ExcalidrawElement } from "./element/types";
 import { AppState } from "./types";
+import { isShallowEqual } from "./utils";
 
 /**
  * Represents the difference between two `T` objects.
@@ -13,8 +14,15 @@ class Delta<T> {
     public readonly to: Partial<T>,
   ) {}
 
-  public static create<T>(from: Partial<T>, to: Partial<T>) {
-    return new Delta(from, to);
+  public static create<T>(
+    from: Partial<T>,
+    to: Partial<T>,
+    modifier?: (delta: Partial<T>) => Partial<T>,
+  ) {
+    const modifiedFrom = modifier ? modifier(from) : from;
+    const modifiedTo = modifier ? modifier(to) : to;
+
+    return new Delta(modifiedFrom, modifiedTo);
   }
 
   /**
@@ -28,6 +36,7 @@ class Delta<T> {
   public static calculate<T extends Object>(
     prevObject: T,
     nextObject: T,
+    modifier?: (delta: Partial<T>) => Partial<T>,
   ): Delta<T> {
     if (prevObject === nextObject) {
       return Delta.empty();
@@ -45,14 +54,27 @@ class Delta<T> {
       const prevValue = prevObject[key as keyof T];
       const nextValue = nextObject[key as keyof T];
 
-      // TODO: Worth going also shallow equal way?
-      //  - it would mean O(n^3) so we would have to be careful
       if (prevValue !== nextValue) {
+        // TODO: Worth going also shallow equal way?
+        // - it would mean O(n^3) so we would have to be careful
+        // - better to sort this at the root (if possible)
+        if (
+          typeof prevValue === "object" &&
+          typeof nextValue === "object" &&
+          (prevValue !== null || nextValue !== null) &&
+          isShallowEqual(
+            prevValue as Record<string, any>,
+            nextValue as Record<string, any>,
+          )
+        ) {
+          continue;
+        }
+
         from[key as keyof T] = prevValue;
         to[key as keyof T] = nextValue;
       }
     }
-    return Delta.create(from, to);
+    return Delta.create(from, to, modifier);
   }
 
   public static empty() {
@@ -117,9 +139,18 @@ export class AppStateChange implements Change<AppState> {
   }
 }
 
+/**
+ * Elements change is a low level primitive to capture a change between two sets of elements.
+ * It does so by encapsulating forward and backward `Delta`s, which allow to travel in both directions.
+ *
+ * We could be smarter about the change in the future, ideas for improvements are:
+ * - for memory, share the same delta instances between different deltas (flyweight-like)
+ * - for serialization, compress the deltas into a tree-like structures with custom pointers or let one delta instance contain multiple element ids
+ * - for performance, emit the changes directly by the user actions, then apply them in from store into the state (no diffing!)
+ * - for performance, add operations in addition to deltas, which increment (decrement) properties by given value (could be used i.e. for presence-like move)
+ */
 export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
   private constructor(
-    // TODO: consider being smarter here and squash the same deltas
     private readonly deltas: Map<string, Delta<ExcalidrawElement>>,
   ) {}
 
@@ -151,8 +182,13 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
         const from = { ...partial, isDeleted: false } as T;
         const to = { isDeleted: true } as T;
 
-        const delta = Delta.create<T>(from, to);
-        deltas.set(prevElement.id, delta);
+        const delta = Delta.create(
+          from,
+          to,
+          ElementsChange.clearIrrelevantProps,
+        );
+
+        deltas.set(prevElement.id, delta as Delta<T>);
       }
     }
 
@@ -166,8 +202,13 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
         const from = { isDeleted: true } as T;
         const to = { ...partial, isDeleted: false } as T;
 
-        const delta = Delta.create<T>(from, to);
-        deltas.set(nextElement.id, delta);
+        const delta = Delta.create(
+          from,
+          to,
+          ElementsChange.clearIrrelevantProps,
+        );
+
+        deltas.set(nextElement.id, delta as Delta<T>);
 
         continue;
       }
@@ -182,20 +223,18 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
         const delta = Delta.calculate<ExcalidrawElement>(
           prevElement,
           nextElement,
-        );
-
-        const clearedDelta = Delta.create<ExcalidrawElement>(
-          ElementsChange.clearIrrelevantProps(delta.from),
-          ElementsChange.clearIrrelevantProps(delta.to),
+          ElementsChange.clearIrrelevantProps,
         );
 
         // Make sure there are at least some changes (except changes to irrelevant data)
-        if (!Delta.isEmpty(clearedDelta)) {
+        if (!Delta.isEmpty(delta)) {
           // TODO: Could shallow equal here instead of going shallow equal rabbit hole, but better to fix it at the root
           deltas.set(nextElement.id, delta as Delta<T>);
         }
       }
     }
+
+    console.log(deltas);
 
     return new ElementsChange(deltas);
   }
@@ -222,9 +261,9 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
 
       if (existingElement) {
         // Make sure to remove irrelevant props when applying the delta
-        const to = ElementsChange.clearIrrelevantProps(delta.to);
+        // const to = ElementsChange.clearIrrelevantProps(delta.to); // TODO: Do I want to keep all of them?
 
-        elements.set(id, newElementWith(existingElement, to, true));
+        elements.set(id, newElementWith(existingElement, delta.to, true));
       }
     }
 
@@ -237,7 +276,7 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
   }
 
   private static clearIrrelevantProps(delta: Partial<ExcalidrawElement>) {
-    const { updated, version, versionNonce, ...clearedDelta } = delta;
+    const { updated, version, versionNonce, seed, ...clearedDelta } = delta;
     return clearedDelta;
   }
 }

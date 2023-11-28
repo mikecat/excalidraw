@@ -10,6 +10,7 @@ import { arrayToMap } from "../utils";
 import { isWindows } from "../constants";
 
 const writeData = (
+  // TODO: Could we get here map?
   prevElements: readonly ExcalidrawElement[],
   appState: AppState,
   updater: () => HistoryEntry | null,
@@ -64,6 +65,7 @@ export const createUndoAction: ActionCreator = (history) => ({
       aria-label={t("buttons.undo")}
       onClick={updateData}
       size={data?.size || "medium"}
+      disabled={history.isUndoStackEmpty}
     />
   ),
   commitToHistory: () => false,
@@ -86,6 +88,7 @@ export const createRedoAction: ActionCreator = (history) => ({
       aria-label={t("buttons.redo")}
       onClick={updateData}
       size={data?.size || "medium"}
+      disabled={history.isRedoStackEmpty}
     />
   ),
   commitToHistory: () => false,

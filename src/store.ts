@@ -28,11 +28,11 @@ export interface IStore {
   clear(): void;
 }
 
-// TODO: store all changes separately within the store (follow-up)
-// so that we could retrieve those for storage
-// so that we could load those again
+/**
+ * In the future, Store should coordinate the changes and maintain its increments cohesive between different instances.
+ */
 export class Store implements IStore {
-  // TODO: Should be a specific increment type
+  // TODO: Add a specific increment type which could be a squash of multiple changes
   private readonly onStoreIncrementEmitter = new Emitter<
     [elementsChange: ElementsChange, appStateChange: AppStateChange]
   >();

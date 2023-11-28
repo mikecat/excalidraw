@@ -7,6 +7,14 @@ export class History {
   private readonly undoStack: HistoryEntry[] = [];
   private readonly redoStack: HistoryEntry[] = [];
 
+  public get isUndoStackEmpty() {
+    return this.undoStack.length === 0;
+  }
+
+  public get isRedoStackEmpty() {
+    return this.redoStack.length === 0;
+  }
+
   public clear() {
     this.undoStack.length = 0;
     this.redoStack.length = 0;

@@ -1,7 +1,13 @@
 import { ColorPicker } from "../components/ColorPicker/ColorPicker";
 import { ZoomInIcon, ZoomOutIcon } from "../components/icons";
 import { ToolButton } from "../components/ToolButton";
-import { CURSOR_TYPE, MIN_ZOOM, THEME, ZOOM_STEP } from "../constants";
+import {
+  CURSOR_TYPE,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  THEME,
+  ZOOM_STEP,
+} from "../constants";
 import { getCommonBounds, getNonDeletedElements } from "../element";
 import { ExcalidrawElement } from "../element/types";
 import { t } from "../i18n";
@@ -113,13 +119,14 @@ export const actionZoomIn = register({
       commitToHistory: false,
     };
   },
-  PanelComponent: ({ updateData }) => (
+  PanelComponent: ({ updateData, appState }) => (
     <ToolButton
       type="button"
       className="zoom-in-button zoom-button"
       icon={ZoomInIcon}
       title={`${t("buttons.zoomIn")} — ${getShortcutKey("CtrlOrCmd++")}`}
       aria-label={t("buttons.zoomIn")}
+      disabled={appState.zoom.value >= MAX_ZOOM}
       onClick={() => {
         updateData(null);
       }}
@@ -150,13 +157,14 @@ export const actionZoomOut = register({
       commitToHistory: false,
     };
   },
-  PanelComponent: ({ updateData }) => (
+  PanelComponent: ({ updateData, appState }) => (
     <ToolButton
       type="button"
       className="zoom-out-button zoom-button"
       icon={ZoomOutIcon}
       title={`${t("buttons.zoomOut")} — ${getShortcutKey("CtrlOrCmd+-")}`}
       aria-label={t("buttons.zoomOut")}
+      disabled={appState.zoom.value <= MIN_ZOOM}
       onClick={() => {
         updateData(null);
       }}
@@ -261,8 +269,8 @@ export const zoomToFit = ({
 
     // Apply clamping to newZoomValue to be between 10% and 3000%
     newZoomValue = Math.min(
-      Math.max(newZoomValue, 0.1),
-      30.0,
+      Math.max(newZoomValue, MIN_ZOOM),
+      MAX_ZOOM,
     ) as NormalizedZoomValue;
 
     let appStateWidth = appState.width;
