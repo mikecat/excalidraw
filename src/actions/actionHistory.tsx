@@ -22,16 +22,23 @@ const writeData = (
     !appState.editingElement &&
     !appState.draggingElement
   ) {
-    const data = updater();
-    if (data === null) {
-      return { commitToHistory };
-    }
+    // Iterate through the history entries in case they result in no visible changes
+    do {
+      // eslint-disable-next-line no-var
+      var historyEntry = updater();
+      if (historyEntry === null) {
+        return { commitToHistory };
+      }
 
-    const nextAppState = data.appStateChange.apply(appState);
-    // TODO: just keep the map once we have fractional indices
-    // TODO: apply z-index deltas differently
-    const nextElements = Array.from(
-      data.elementsChange.apply(arrayToMap(prevElements)).values(),
+      // eslint-disable-next-line no-var
+      var [
+        [nextElementsMap, containsElementDifference],
+        [nextAppState, containsAppStateDifference],
+      ] = historyEntry.applyTo(arrayToMap(prevElements), appState);
+    } while (
+      !containsElementDifference &&
+      !containsAppStateDifference &&
+      historyEntry
     );
 
     // TODO: uncomment and test
@@ -39,7 +46,7 @@ const writeData = (
 
     return {
       appState: nextAppState,
-      elements: nextElements,
+      elements: Array.from(nextElementsMap.values()),
       commitToHistory,
       syncHistory: true,
     };
@@ -53,7 +60,7 @@ export const createUndoAction: ActionCreator = (history) => ({
   name: "undo",
   trackEvent: { category: "history" },
   perform: (elements, appState) =>
-    writeData(elements, appState, () => history.undoOnce()),
+    writeData(elements, appState, () => history.undoOnce(arrayToMap(elements))),
   keyTest: (event) =>
     event[KEYS.CTRL_OR_CMD] &&
     event.key.toLowerCase() === KEYS.Z &&
@@ -75,7 +82,7 @@ export const createRedoAction: ActionCreator = (history) => ({
   name: "redo",
   trackEvent: { category: "history" },
   perform: (elements, appState) =>
-    writeData(elements, appState, () => history.redoOnce()),
+    writeData(elements, appState, () => history.redoOnce(arrayToMap(elements))),
   keyTest: (event) =>
     (event[KEYS.CTRL_OR_CMD] &&
       event.shiftKey &&

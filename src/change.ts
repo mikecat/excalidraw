@@ -18,9 +18,12 @@ class Delta<T> {
     from: Partial<T>,
     to: Partial<T>,
     modifier?: (delta: Partial<T>) => Partial<T>,
+    modifierOptions?: "from" | "to",
   ) {
-    const modifiedFrom = modifier ? modifier(from) : from;
-    const modifiedTo = modifier ? modifier(to) : to;
+    const modifiedFrom =
+      modifier && modifierOptions !== "to" ? modifier(from) : from;
+    const modifiedTo =
+      modifier && modifierOptions !== "from" ? modifier(to) : to;
 
     return new Delta(modifiedFrom, modifiedTo);
   }
@@ -55,21 +58,6 @@ class Delta<T> {
       const nextValue = nextObject[key as keyof T];
 
       if (prevValue !== nextValue) {
-        // TODO: Worth going also shallow equal way?
-        // - it would mean O(n^3) so we would have to be careful
-        // - better to sort this at the root (if possible)
-        if (
-          typeof prevValue === "object" &&
-          typeof nextValue === "object" &&
-          (prevValue !== null || nextValue !== null) &&
-          isShallowEqual(
-            prevValue as Record<string, any>,
-            nextValue as Record<string, any>,
-          )
-        ) {
-          continue;
-        }
-
         from[key as keyof T] = prevValue;
         to[key as keyof T] = nextValue;
       }
@@ -84,6 +72,33 @@ class Delta<T> {
   public static isEmpty<T>(delta: Delta<T>): boolean {
     return !Object.keys(delta.from).length && !Object.keys(delta.to).length;
   }
+
+  public static containsDifference<T>(delta: Partial<T>, object: T) {
+    for (const [key, deltaValue] of Object.entries(delta)) {
+      const objectValue = object[key as keyof T];
+      if (deltaValue !== objectValue) {
+        // TODO: Worth going also shallow equal way?
+        // - it would mean O(n^3) so we would have to be careful
+        // - better to sort this at the root (if possible)
+        if (
+          typeof deltaValue === "object" &&
+          typeof objectValue === "object" &&
+          deltaValue !== null &&
+          objectValue !== null &&
+          isShallowEqual(
+            deltaValue as Record<string, any>,
+            objectValue as Record<string, any>,
+          )
+        ) {
+          continue;
+        }
+
+        return true;
+      }
+    }
+
+    return false;
+  }
 }
 
 // TODO: I also might need a clone (with modifier)
@@ -97,9 +112,11 @@ interface Change<T> {
   inverse(): Change<T>;
 
   /**
-   * Applies the `Change` to the previous state.
+   * Applies the `Change` to the previous object.
+   *
+   * @returns new object instance and boolean, indicating if there was any visible change made.
    */
-  apply(previous: T): T;
+  applyTo(previous: T): [T, boolean];
 
   /**
    * Checks whether there are actually `Delta`s.
@@ -127,11 +144,18 @@ export class AppStateChange implements Change<AppState> {
     return new AppStateChange(inversedDelta);
   }
 
-  public apply(appState: AppState): AppState {
-    return {
+  public applyTo(appState: AppState): [AppState, boolean] {
+    const containsDifference = Delta.containsDifference(
+      this.delta.to,
+      appState,
+    );
+
+    const newAppState = {
       ...appState,
       ...this.delta.to,
     };
+
+    return [newAppState, containsDifference];
   }
 
   public isEmpty(): boolean {
@@ -153,6 +177,10 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
   private constructor(
     private readonly deltas: Map<string, Delta<ExcalidrawElement>>,
   ) {}
+
+  public static create(deltas: Map<string, Delta<ExcalidrawElement>>) {
+    return new ElementsChange(deltas);
+  }
 
   /**
    * Calculates the `Delta`s between the previous and next set of elements.
@@ -234,8 +262,6 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
       }
     }
 
-    console.log(deltas);
-
     return new ElementsChange(deltas);
   }
 
@@ -253,26 +279,84 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
     return new ElementsChange(deltas);
   }
 
-  public apply(
+  public applyTo(
     elements: Map<string, ExcalidrawElement>,
-  ): Map<string, ExcalidrawElement> {
+  ): [Map<string, ExcalidrawElement>, boolean] {
+    let containsVisibleDifference = false;
+
     for (const [id, delta] of this.deltas.entries()) {
       const existingElement = elements.get(id);
 
       if (existingElement) {
-        // Make sure to remove irrelevant props when applying the delta
-        // const to = ElementsChange.clearIrrelevantProps(delta.to); // TODO: Do I want to keep all of them?
+        // Check if there was actually any visible change before applying
+        if (!containsVisibleDifference) {
+          if (existingElement.isDeleted !== !!delta.to.isDeleted) {
+            // Special case, when delta (un)deletes alement, it results in a visible change
+            containsVisibleDifference = true;
+          } else if (!existingElement.isDeleted) {
+            // Check for any difference on a visible element
+            containsVisibleDifference = Delta.containsDifference(
+              delta.to,
+              existingElement,
+            );
+          }
+        }
 
         elements.set(id, newElementWith(existingElement, delta.to, true));
       }
     }
 
-    return elements;
+    return [elements, containsVisibleDifference];
   }
 
   public isEmpty(): boolean {
     // TODO: might need to go through all deltas and check for emptiness
     return this.deltas.size === 0;
+  }
+
+  /**
+   * Update the delta/s based on the existing elements.
+   *
+   * @param elements current elements
+   * @param modifierOptions defines which of the delta (`from` or `to`) will be updated
+   * @returns new instance with modified delta/s
+   */
+  public applyLatestChanges(
+    elements: Map<string, ExcalidrawElement>,
+    modifierOptions: "from" | "to",
+  ): ElementsChange {
+    const modifier =
+      (element: ExcalidrawElement) => (partial: Partial<ExcalidrawElement>) => {
+        const modifiedPartial: { [key: string]: unknown } = {};
+
+        for (const key of Object.keys(partial)) {
+          modifiedPartial[key] = element[key as keyof ExcalidrawElement];
+        }
+
+        return modifiedPartial;
+      };
+
+    const deltas = new Map<string, Delta<ExcalidrawElement>>();
+
+    for (const [id, delta] of this.deltas.entries()) {
+      const existingElement = elements.get(id);
+
+      if (existingElement) {
+        const modifiedDelta = Delta.create(
+          delta.from,
+          delta.to,
+          modifier(existingElement),
+          modifierOptions,
+        );
+
+        deltas.set(id, modifiedDelta);
+      } else {
+        // Keep whatever we had
+        deltas.set(id, delta);
+      }
+    }
+
+    return ElementsChange.create(deltas);
   }
 
   private static clearIrrelevantProps(delta: Partial<ExcalidrawElement>) {

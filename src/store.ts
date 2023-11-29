@@ -95,11 +95,12 @@ export class Store implements IStore {
         }
       }
 
-      // Update the snapshot
       this.snapshot = nextSnapshot;
-      this.recordingChanges = false;
-      this.onlyUpdateSnapshot = false;
     }
+
+    // Update the snapshot
+    this.recordingChanges = false;
+    this.onlyUpdateSnapshot = false;
   }
 
   public clear(): void {
@@ -180,6 +181,7 @@ class Snapshot {
     });
   }
 
+  // TODO: could I use scene.versionNonce?
   private detectChangedElements(nextElements: Map<string, ExcalidrawElement>) {
     if (this.elements.size !== nextElements.size) {
       return true;

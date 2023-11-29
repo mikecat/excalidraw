@@ -1,4 +1,6 @@
 import { AppStateChange, ElementsChange } from "./change";
+import { ExcalidrawElement } from "./element/types";
+import { AppState } from "./types";
 
 export class History {
   // TODO: think about limiting the depth
@@ -20,8 +22,11 @@ export class History {
     this.redoStack.length = 0;
   }
 
-  // TODO: stored delta might not have any effect, so we might need to iterate through the stack
-  public undoOnce(): HistoryEntry | null {
+  // TODO: stored delta might not have any effect (i.e. because they were performed on delete items)
+  //, so we might need to iterate through the stack
+  public undoOnce(
+    elements: Map<string, ExcalidrawElement>,
+  ): HistoryEntry | null {
     if (!this.undoStack.length) {
       return null;
     }
@@ -29,7 +34,8 @@ export class History {
     const undoEntry = this.undoStack.pop();
 
     if (undoEntry !== undefined) {
-      const redoEntry = undoEntry.inverse();
+      // TODO: update the redo based on the existing snapshot
+      const redoEntry = undoEntry.inverse().applyLatestChanges(elements, "to");
       this.redoStack.push(redoEntry);
 
       return undoEntry;
@@ -38,8 +44,9 @@ export class History {
     return null;
   }
 
-  // TODO: update the redo based on the existing snapshot
-  public redoOnce(): HistoryEntry | null {
+  public redoOnce(
+    elements: Map<string, ExcalidrawElement>,
+  ): HistoryEntry | null {
     if (!this.redoStack.length) {
       return null;
     }
@@ -47,7 +54,7 @@ export class History {
     const redoEntry = this.redoStack.pop();
 
     if (redoEntry !== undefined) {
-      const undoEntry = redoEntry.inverse();
+      const undoEntry = redoEntry.inverse().applyLatestChanges(elements, "to");
       this.undoStack.push(undoEntry);
       return redoEntry;
     }
@@ -63,7 +70,10 @@ export class History {
     elementsChange: ElementsChange,
     appStateChange: AppStateChange,
   ) {
-    const nextEntry = HistoryEntry.create(appStateChange, elementsChange);
+    const nextEntry = HistoryEntry.create(
+      appStateChange.inverse(),
+      elementsChange.inverse(),
+    );
 
     if (!nextEntry.isEmpty()) {
       this.undoStack.push(nextEntry);
@@ -84,7 +94,7 @@ export class HistoryEntry {
     appStateChange: AppStateChange,
     elementsChange: ElementsChange,
   ) {
-    return new HistoryEntry(appStateChange.inverse(), elementsChange.inverse());
+    return new HistoryEntry(appStateChange, elementsChange);
   }
 
   public inverse(): HistoryEntry {
@@ -92,6 +102,33 @@ export class HistoryEntry {
       this.appStateChange.inverse(),
       this.elementsChange.inverse(),
     );
+  }
+
+  public applyTo(
+    elements: Map<string, ExcalidrawElement>,
+    appState: AppState,
+  ): [[Map<string, ExcalidrawElement>, boolean], [AppState, boolean]] {
+    // TODO: just keep the map once we have fractional indices
+    // TODO: apply z-index deltas differently
+    const nextElements = this.elementsChange.applyTo(elements);
+    const nextAppState = this.appStateChange.applyTo(appState);
+
+    return [nextElements, nextAppState];
+  }
+
+  /**
+   * Apply latest (remote) changes to the history entry, creates new instance of `HistoryEntry`.
+   */
+  public applyLatestChanges(
+    elements: Map<string, ExcalidrawElement>,
+    modifierOptions: "from" | "to",
+  ): HistoryEntry {
+    const updatedElementsChange = this.elementsChange.applyLatestChanges(
+      elements,
+      modifierOptions,
+    );
+
+    return HistoryEntry.create(this.appStateChange, updatedElementsChange);
   }
 
   public isEmpty(): boolean {

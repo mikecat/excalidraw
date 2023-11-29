@@ -254,7 +254,7 @@ import {
   muteFSAbortError,
   isTestEnv,
   easeOut,
-  arrayToMap,
+  isShallowEqual,
 } from "../utils";
 import {
   embeddableURLValidator,
@@ -7278,9 +7278,15 @@ class App extends React.Component<AppProps, AppState> {
         }));
       }
 
+      // TODO: uncovered / weird cases, anything that cancels selection might need to end-up also in the history entry as well (not just pointer up)
+      // TODO: add esc to cancel current selection
       if (
         activeTool.type !== "selection" ||
-        isSomeElementSelected(this.scene.getNonDeletedElements(), this.state)
+        isSomeElementSelected(this.scene.getNonDeletedElements(), this.state) ||
+        !isShallowEqual(
+          this.state.previousSelectedElementIds,
+          this.state.selectedElementIds,
+        )
       ) {
         this.store.resumeRecording();
       }
