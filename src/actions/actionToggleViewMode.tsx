@@ -14,7 +14,7 @@ export const actionToggleViewMode = register({
         ...appState,
         viewModeEnabled: !this.checked!(appState),
       },
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
   checked: (appState) => appState.viewModeEnabled,

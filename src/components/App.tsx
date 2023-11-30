@@ -1425,12 +1425,12 @@ class App extends React.Component<AppProps, AppState> {
           if (shouldUpdateStrokeColor) {
             this.syncActionResult({
               appState: { ...this.state, currentItemStrokeColor: color },
-              commitToHistory: true,
+              commitToStore: true,
             });
           } else {
             this.syncActionResult({
               appState: { ...this.state, currentItemBackgroundColor: color },
-              commitToHistory: true,
+              commitToStore: true,
             });
           }
         } else {
@@ -1469,8 +1469,10 @@ class App extends React.Component<AppProps, AppState> {
           }
         });
         this.scene.replaceAllElements(actionResult.elements);
-        if (actionResult.commitToHistory) {
+        if (actionResult.commitToStore) {
           this.store.resumeRecording();
+        } else if (actionResult.shouldOnlyUpdateSnapshot) {
+          this.store.onlyUpdateSnapshot();
         }
       }
 
@@ -1482,8 +1484,10 @@ class App extends React.Component<AppProps, AppState> {
       }
 
       if (actionResult.appState || editingElement || this.state.contextMenu) {
-        if (actionResult.commitToHistory) {
+        if (actionResult.commitToStore) {
           this.store.resumeRecording();
+        } else if (actionResult.shouldOnlyUpdateSnapshot) {
+          this.store.onlyUpdateSnapshot();
         }
 
         let viewModeEnabled = actionResult?.appState?.viewModeEnabled || false;
@@ -1663,7 +1667,7 @@ class App extends React.Component<AppProps, AppState> {
     this.resetHistory();
     this.syncActionResult({
       ...scene,
-      commitToHistory: true,
+      commitToStore: true,
     });
   };
 
@@ -2048,7 +2052,7 @@ class App extends React.Component<AppProps, AppState> {
       this.state.editingLinearElement &&
       !this.state.selectedElementIds[this.state.editingLinearElement.elementId]
     ) {
-      // defer so that the commitToHistory flag isn't reset via current update
+      // defer so that the commitToStore flag isn't reset via current update
       setTimeout(() => {
         // execute only if the condition still holds when the deferred callback
         // executes (it can be scheduled multiple times depending on how
@@ -2068,6 +2072,8 @@ class App extends React.Component<AppProps, AppState> {
       this.state.selectedLinearElement &&
       !this.state.selectedElementIds[this.state.selectedLinearElement.elementId]
     ) {
+      // TODO: re-check, as this is causing a bug when a single selected linear element is deleted, undo action does bring it unselected
+
       // To make sure `selectedLinearElement` is in sync with `selectedElementIds`, however this shouldn't be needed once
       // we have a single API to update `selectedElementIds`
       this.setState({ selectedLinearElement: null });
@@ -2096,7 +2102,7 @@ class App extends React.Component<AppProps, AppState> {
     // TODO: we could wrap this in requestIdleCallback when available
     // - specify timeout 0 (so it is triggered immediately)
     // - debounce on every frame (16ms?)
-    this.store.capture(this.scene.getElementsMapIncludingDeleted(), this.state);
+    this.store.capture(this.scene, this.state);
 
     // Do not notify consumers if we're still loading the scene. Among other
     // potential issues, this fixes a case where the tab isn't focused during
@@ -2936,15 +2942,16 @@ class App extends React.Component<AppProps, AppState> {
       elements?: SceneData["elements"];
       appState?: Pick<AppState, K> | null;
       collaborators?: SceneData["collaborators"];
-      commitToHistory?: SceneData["commitToHistory"];
+      commitToStore?: SceneData["commitToStore"];
       isRemoteUpdate?: SceneData["isRemoteUpdate"];
     }) => {
-      if (sceneData.commitToHistory) {
+      if (sceneData.commitToStore) {
         this.store.resumeRecording();
       }
 
       if (sceneData.isRemoteUpdate) {
-        this.store.skipChangesCalculation();
+        this.store.onlyUpdateSnapshot();
+        this.store.markRemoteUpdate();
       }
 
       if (sceneData.appState) {
@@ -7942,7 +7949,7 @@ class App extends React.Component<AppProps, AppState> {
                 isLoading: false,
               },
               replaceFiles: true,
-              commitToHistory: true,
+              commitToStore: true,
             });
             return;
           } catch (error: any) {
@@ -8036,7 +8043,7 @@ class App extends React.Component<AppProps, AppState> {
             isLoading: false,
           },
           replaceFiles: true,
-          commitToHistory: true,
+          commitToStore: true,
         });
       } else if (ret.type === MIME_TYPES.excalidrawlib) {
         await this.library

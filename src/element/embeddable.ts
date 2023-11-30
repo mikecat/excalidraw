@@ -268,7 +268,7 @@ export const actionSetEmbeddableAsActiveTool = register({
           type: "embeddable",
         }),
       },
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
 });

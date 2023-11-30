@@ -69,7 +69,7 @@ export const actionGroup = register({
     });
     if (selectedElements.length < 2) {
       // nothing to group
-      return { appState, elements, commitToHistory: false };
+      return { appState, elements, commitToStore: false };
     }
     // if everything is already grouped into 1 group, there is nothing to do
     const selectedGroupIds = getSelectedGroupIds(appState);
@@ -89,7 +89,7 @@ export const actionGroup = register({
       ]);
       if (combinedSet.size === elementIdsInGroup.size) {
         // no incremental ids in the selected ids
-        return { appState, elements, commitToHistory: false };
+        return { appState, elements, commitToStore: false };
       }
     }
 
@@ -155,7 +155,7 @@ export const actionGroup = register({
         ),
       },
       elements: nextElements,
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   contextItemLabel: "labels.group",
@@ -182,7 +182,7 @@ export const actionUngroup = register({
   perform: (elements, appState, _, app) => {
     const groupIds = getSelectedGroupIds(appState);
     if (groupIds.length === 0) {
-      return { appState, elements, commitToHistory: false };
+      return { appState, elements, commitToStore: false };
     }
 
     let nextElements = [...elements];
@@ -250,7 +250,7 @@ export const actionUngroup = register({
     return {
       appState: { ...appState, ...updateAppState },
       elements: nextElements,
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   keyTest: (event) =>

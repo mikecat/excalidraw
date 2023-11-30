@@ -14,7 +14,7 @@ export const actionToggleZenMode = register({
         ...appState,
         zenModeEnabled: !this.checked!(appState),
       },
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
   checked: (appState) => appState.zenModeEnabled,

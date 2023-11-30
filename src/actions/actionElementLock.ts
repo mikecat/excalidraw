@@ -43,7 +43,7 @@ export const actionToggleElementLock = register({
           ? null
           : appState.selectedLinearElement,
       },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   contextItemLabel: (elements, appState, app) => {
@@ -97,7 +97,7 @@ export const actionUnlockAllElements = register({
           lockedElements.map((el) => [el.id, true]),
         ),
       },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   contextItemLabel: "labels.elementLock.unlockAll",

@@ -3,12 +3,10 @@ import { ExcalidrawElement } from "./element/types";
 import { AppState } from "./types";
 
 export class History {
-  // TODO: think about limiting the depth
-  // TODO: when stacks are empty, disable the buttons
-  // TODO: we might want to persist the history locally (follow-up)
   private readonly undoStack: HistoryEntry[] = [];
   private readonly redoStack: HistoryEntry[] = [];
 
+  // TODO: think about limiting the depth
   public get isUndoStackEmpty() {
     return this.undoStack.length === 0;
   }
@@ -22,8 +20,6 @@ export class History {
     this.redoStack.length = 0;
   }
 
-  // TODO: stored delta might not have any effect (i.e. because they were performed on delete items)
-  //, so we might need to iterate through the stack
   public undoOnce(
     elements: Map<string, ExcalidrawElement>,
   ): HistoryEntry | null {
@@ -34,8 +30,7 @@ export class History {
     const undoEntry = this.undoStack.pop();
 
     if (undoEntry !== undefined) {
-      // TODO: update the redo based on the existing snapshot
-      const redoEntry = undoEntry.inverse().applyLatestChanges(elements, "to");
+      const redoEntry = undoEntry.inverse().applyLatestChanges(elements);
       this.redoStack.push(redoEntry);
 
       return undoEntry;
@@ -54,7 +49,7 @@ export class History {
     const redoEntry = this.redoStack.pop();
 
     if (redoEntry !== undefined) {
-      const undoEntry = redoEntry.inverse().applyLatestChanges(elements, "to");
+      const undoEntry = redoEntry.inverse().applyLatestChanges(elements);
       this.undoStack.push(undoEntry);
       return redoEntry;
     }
@@ -108,7 +103,6 @@ export class HistoryEntry {
     elements: Map<string, ExcalidrawElement>,
     appState: AppState,
   ): [[Map<string, ExcalidrawElement>, boolean], [AppState, boolean]] {
-    // TODO: just keep the map once we have fractional indices
     // TODO: apply z-index deltas differently
     const nextElements = this.elementsChange.applyTo(elements);
     const nextAppState = this.appStateChange.applyTo(appState);
@@ -121,12 +115,9 @@ export class HistoryEntry {
    */
   public applyLatestChanges(
     elements: Map<string, ExcalidrawElement>,
-    modifierOptions: "from" | "to",
   ): HistoryEntry {
-    const updatedElementsChange = this.elementsChange.applyLatestChanges(
-      elements,
-      modifierOptions,
-    );
+    const updatedElementsChange =
+      this.elementsChange.applyLatestChanges(elements);
 
     return HistoryEntry.create(this.appStateChange, updatedElementsChange);
   }
@@ -135,75 +126,3 @@ export class HistoryEntry {
     return this.appStateChange.isEmpty() && this.elementsChange.isEmpty();
   }
 }
-
-// TODO: still needed?
-// if (
-//         isLinearElement(element) &&
-//         appState.multiElement &&
-//         appState.multiElement.id === element.id
-//       ) {
-//         // don't store multi-point arrow if still has only one point
-//         if (
-//           appState.multiElement &&
-//           appState.multiElement.id === element.id &&
-//           element.points.length < 2
-//         ) {
-//           return elements;
-//         }
-
-//         elements.push({
-//           ...element,
-//           // don't store last point if not committed
-//           points:
-//             element.lastCommittedPoint !==
-//               element.points[element.points.length - 1]
-//               ? element.points.slice(0, -1)
-//               : element.points,
-//         });
-//       } else {
-//         elements.push(element);
-//       }
-//       return elements
-
-// const { prevEntry } = this;
-
-// // TODO: is this still needed?
-// if (!prevEntry) {
-//   return true;
-// }
-
-// TODO: still needed?
-// // note: this is safe because entry's appState is guaranteed no excess props
-// let key: keyof typeof nextEntry.deltaAppState;
-// for (key in nextEntry.deltaAppState) {
-//   if (key === "editingLinearElement") {
-//     if (
-//       nextEntry.appState[key]?.elementId ===
-//       prevEntry.appState[key]?.elementId
-//     ) {
-//       continue;
-//     }
-//   }
-//   if (key === "selectedElementIds" || key === "selectedGroupIds") {
-//     continue;
-//   }
-//   if (nextEntry.appState[key] !== prevEntry.appState[key]) {
-//     return true;
-//   }
-// }
-
-// TODO: check if this still makes sense
-/**
- * Updates history's `lastEntry` to latest app state. This is necessary
- *  when doing undo/redo which itself doesn't commit to history, but updates
- *  app state in a way that would break `shouldCreateEntry` which relies on
- *  `lastEntry` to reflect last comittable history state.
- * We can't update `lastEntry` from within history when calling undo/redo
- *  because the action potentially mutates appState/elements before storing
- *  it.
- */
-// setCurrentState(appState: AppState, elements: readonly ExcalidrawElement[]) {
-//   this.lastEntry = this.hydrateHistoryEntry(
-//     this.generateEntry(appState, elements),
-//   );
-// }

@@ -80,7 +80,7 @@ export const actionUnbindText = register({
     return {
       elements,
       appState,
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
 });
@@ -149,7 +149,7 @@ export const actionBindText = register({
     return {
       elements: pushTextAboveContainer(elements, container, textElement),
       appState: { ...appState, selectedElementIds: { [container.id]: true } },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
 });
@@ -299,7 +299,7 @@ export const actionWrapTextInContainer = register({
         ...appState,
         selectedElementIds: containerIds,
       },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
 });

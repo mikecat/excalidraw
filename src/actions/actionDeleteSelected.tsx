@@ -109,7 +109,7 @@ export const actionDeleteSelected = register({
             ...nextAppState,
             editingLinearElement: null,
           },
-          commitToHistory: false,
+          commitToStore: false,
         };
       }
 
@@ -141,7 +141,7 @@ export const actionDeleteSelected = register({
                 : [0],
           },
         },
-        commitToHistory: true,
+        commitToStore: true,
       };
     }
     let { elements: nextElements, appState: nextAppState } =
@@ -161,7 +161,7 @@ export const actionDeleteSelected = register({
         multiElement: null,
         activeEmbeddable: null,
       },
-      commitToHistory: isSomeElementSelected(
+      commitToStore: isSomeElementSelected(
         getNonDeletedElements(elements),
         appState,
       ),

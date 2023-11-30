@@ -302,7 +302,7 @@ class Collab extends PureComponent<Props, CollabState> {
 
       this.excalidrawAPI.updateScene({
         elements,
-        commitToHistory: false,
+        commitToStore: false,
       });
     }
   };
@@ -457,7 +457,7 @@ class Collab extends PureComponent<Props, CollabState> {
       // this.excalidrawAPI.history.clear();
       this.excalidrawAPI.updateScene({
         elements,
-        commitToHistory: false,
+        commitToStore: false,
         isRemoteUpdate: true, //  TODO: is it really?
       });
 
@@ -657,7 +657,7 @@ class Collab extends PureComponent<Props, CollabState> {
   ) => {
     this.excalidrawAPI.updateScene({
       elements,
-      commitToHistory: false,
+      commitToStore: false,
       isRemoteUpdate: true,
     });
 

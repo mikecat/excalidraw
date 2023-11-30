@@ -41,7 +41,7 @@ export const actionChangeViewBackgroundColor = register({
   perform: (_, appState, value) => {
     return {
       appState: { ...appState, ...value },
-      commitToHistory: !!value.viewBackgroundColor,
+      commitToStore: !!value.viewBackgroundColor,
     };
   },
   PanelComponent: ({ elements, appState, updateData, appProps }) => {
@@ -94,7 +94,7 @@ export const actionClearCanvas = register({
             ? { ...appState.activeTool, type: "selection" }
             : appState.activeTool,
       },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
 });
@@ -116,7 +116,7 @@ export const actionZoomIn = register({
           appState,
         ),
       },
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
   PanelComponent: ({ updateData, appState }) => (
@@ -154,7 +154,7 @@ export const actionZoomOut = register({
           appState,
         ),
       },
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
   PanelComponent: ({ updateData, appState }) => (
@@ -192,7 +192,7 @@ export const actionResetZoom = register({
           appState,
         ),
       },
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
   PanelComponent: ({ updateData, appState }) => (
@@ -315,7 +315,7 @@ export const zoomToFit = ({
       scrollY,
       zoom: { value: newZoomValue },
     },
-    commitToHistory: false,
+    commitToStore: false,
   };
 };
 
@@ -385,7 +385,7 @@ export const actionToggleTheme = register({
         theme:
           value || (appState.theme === THEME.LIGHT ? THEME.DARK : THEME.LIGHT),
       },
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
   keyTest: (event) => event.altKey && event.shiftKey && event.code === CODES.D,
@@ -422,7 +422,7 @@ export const actionToggleEraserTool = register({
         activeEmbeddable: null,
         activeTool,
       },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   keyTest: (event) => event.key === KEYS.E,
@@ -457,7 +457,7 @@ export const actionToggleHandTool = register({
         activeEmbeddable: null,
         activeTool,
       },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   keyTest: (event) =>

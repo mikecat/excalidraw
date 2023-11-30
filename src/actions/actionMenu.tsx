@@ -13,7 +13,7 @@ export const actionToggleCanvasMenu = register({
       ...appState,
       openMenu: appState.openMenu === "canvas" ? null : "canvas",
     },
-    commitToHistory: false,
+    commitToStore: false,
   }),
   PanelComponent: ({ appState, updateData }) => (
     <ToolButton
@@ -34,7 +34,7 @@ export const actionToggleEditMenu = register({
       ...appState,
       openMenu: appState.openMenu === "shape" ? null : "shape",
     },
-    commitToHistory: false,
+    commitToStore: false,
   }),
   PanelComponent: ({ elements, appState, updateData }) => (
     <ToolButton
@@ -64,7 +64,7 @@ export const actionShortcuts = register({
         ...appState,
         openDialog: appState.openDialog === "help" ? null : "help",
       },
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
   keyTest: (event) => event.key === KEYS.QUESTION_MARK,

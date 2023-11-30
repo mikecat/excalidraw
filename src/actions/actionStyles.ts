@@ -48,7 +48,7 @@ export const actionCopyStyles = register({
         ...appState,
         toast: { message: t("toast.copyStyles") },
       },
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
   contextItemLabel: "labels.copyStyles",
@@ -64,7 +64,7 @@ export const actionPasteStyles = register({
     const pastedElement = elementsCopied[0];
     const boundTextElement = elementsCopied[1];
     if (!isExcalidrawElement(pastedElement)) {
-      return { elements, commitToHistory: false };
+      return { elements, commitToStore: false };
     }
 
     const selectedElements = getSelectedElements(elements, appState, {
@@ -149,7 +149,7 @@ export const actionPasteStyles = register({
         }
         return element;
       }),
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   contextItemLabel: "labels.pasteStyles",

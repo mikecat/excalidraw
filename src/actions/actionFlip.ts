@@ -25,7 +25,7 @@ export const actionFlipHorizontal = register({
         app,
       ),
       appState,
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   keyTest: (event) => event.shiftKey && event.code === CODES.H,
@@ -43,7 +43,7 @@ export const actionFlipVertical = register({
         app,
       ),
       appState,
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   keyTest: (event) =>

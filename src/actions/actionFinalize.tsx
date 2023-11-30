@@ -49,7 +49,7 @@ export const actionFinalize = register({
             cursorButton: "up",
             editingLinearElement: null,
           },
-          commitToHistory: true,
+          commitToStore: true,
         };
       }
     }
@@ -190,7 +190,7 @@ export const actionFinalize = register({
             : appState.selectedLinearElement,
         pendingImageElementId: null,
       },
-      commitToHistory: appState.activeTool.type === "freedraw",
+      commitToStore: appState.activeTool.type === "freedraw",
     };
   },
   keyTest: (event, appState) =>

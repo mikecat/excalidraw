@@ -11,7 +11,7 @@ export const actionToggleStats = register({
         ...appState,
         showStats: !this.checked!(appState),
       },
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
   checked: (appState) => appState.showStats,

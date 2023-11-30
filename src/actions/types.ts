@@ -19,8 +19,8 @@ export type ActionResult =
         "offsetTop" | "offsetLeft" | "width" | "height"
       > | null;
       files?: BinaryFiles | null;
-      commitToHistory: boolean;
-      syncHistory?: boolean;
+      commitToStore: boolean;
+      shouldOnlyUpdateSnapshot?: boolean;
       replaceFiles?: boolean;
     }
   | false;

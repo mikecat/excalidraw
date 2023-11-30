@@ -30,7 +30,7 @@ export const actionToggleLinearEditor = register({
         ...appState,
         editingLinearElement,
       },
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
   contextItemLabel: (elements, appState, app) => {

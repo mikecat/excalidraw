@@ -46,7 +46,7 @@ export const actionSelectAll = register({
             ? new LinearElementEditor(elements[0], app.scene)
             : null,
       },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   contextItemLabel: "labels.selectAll",

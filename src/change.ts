@@ -78,7 +78,7 @@ class Delta<T> {
       const objectValue = object[key as keyof T];
       if (deltaValue !== objectValue) {
         // TODO: Worth going also shallow equal way?
-        // - it would mean O(n^3) so we would have to be careful
+        // - it means O(n^3), but this is calculated on applying the change (not a hot path)
         // - better to sort this at the root (if possible)
         if (
           typeof deltaValue === "object" &&
@@ -256,7 +256,6 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
 
         // Make sure there are at least some changes (except changes to irrelevant data)
         if (!Delta.isEmpty(delta)) {
-          // TODO: Could shallow equal here instead of going shallow equal rabbit hole, but better to fix it at the root
           deltas.set(nextElement.id, delta as Delta<T>);
         }
       }
@@ -323,8 +322,8 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
    */
   public applyLatestChanges(
     elements: Map<string, ExcalidrawElement>,
-    modifierOptions: "from" | "to",
   ): ElementsChange {
+    const toBeModifiedPart = "to";
     const modifier =
       (element: ExcalidrawElement) => (partial: Partial<ExcalidrawElement>) => {
         const modifiedPartial: { [key: string]: unknown } = {};
@@ -346,7 +345,7 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
           delta.from,
           delta.to,
           modifier(existingElement),
-          modifierOptions,
+          toBeModifiedPart,
         );
 
         deltas.set(id, modifiedDelta);

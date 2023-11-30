@@ -17,7 +17,7 @@ export const actionAddToLibrary = register({
     for (const type of LIBRARY_DISABLED_TYPES) {
       if (selectedElements.some((element) => element.type === type)) {
         return {
-          commitToHistory: false,
+          commitToStore: false,
           appState: {
             ...appState,
             errorMessage: t(`errors.libraryElementTypeError.${type}`),
@@ -41,7 +41,7 @@ export const actionAddToLibrary = register({
       })
       .then(() => {
         return {
-          commitToHistory: false,
+          commitToStore: false,
           appState: {
             ...appState,
             toast: { message: t("toast.addedToLibrary") },
@@ -50,7 +50,7 @@ export const actionAddToLibrary = register({
       })
       .catch((error) => {
         return {
-          commitToHistory: false,
+          commitToStore: false,
           appState: {
             ...appState,
             errorMessage: error.message,

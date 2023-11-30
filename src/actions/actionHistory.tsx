@@ -15,7 +15,7 @@ const writeData = (
   appState: AppState,
   updater: () => HistoryEntry | null,
 ): ActionResult => {
-  const commitToHistory = false;
+  const commitToStore = false;
   if (
     !appState.multiElement &&
     !appState.resizingElement &&
@@ -27,7 +27,7 @@ const writeData = (
       // eslint-disable-next-line no-var
       var historyEntry = updater();
       if (historyEntry === null) {
-        return { commitToHistory };
+        return { commitToStore };
       }
 
       // eslint-disable-next-line no-var
@@ -47,11 +47,11 @@ const writeData = (
     return {
       appState: nextAppState,
       elements: Array.from(nextElementsMap.values()),
-      commitToHistory,
-      syncHistory: true,
+      commitToStore,
+      shouldOnlyUpdateSnapshot: true,
     };
   }
-  return { commitToHistory };
+  return { commitToStore };
 };
 
 type ActionCreator = (history: History) => Action;
@@ -75,7 +75,7 @@ export const createUndoAction: ActionCreator = (history) => ({
       disabled={history.isUndoStackEmpty}
     />
   ),
-  commitToHistory: () => false,
+  commitToStore: () => false,
 });
 
 export const createRedoAction: ActionCreator = (history) => ({
@@ -98,5 +98,5 @@ export const createRedoAction: ActionCreator = (history) => ({
       disabled={history.isRedoStackEmpty}
     />
   ),
-  commitToHistory: () => false,
+  commitToStore: () => false,
 });

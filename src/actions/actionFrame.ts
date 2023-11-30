@@ -35,14 +35,14 @@ export const actionSelectAllElementsInFrame = register({
             return acc;
           }, {} as Record<ExcalidrawElement["id"], true>),
         },
-        commitToHistory: false,
+        commitToStore: false,
       };
     }
 
     return {
       elements,
       appState,
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
   contextItemLabel: "labels.selectAllElementsInFrame",
@@ -65,14 +65,14 @@ export const actionRemoveAllElementsFromFrame = register({
             [selectedFrame.id]: true,
           },
         },
-        commitToHistory: true,
+        commitToStore: true,
       };
     }
 
     return {
       elements,
       appState,
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
   contextItemLabel: "labels.removeAllElementsFromFrame",
@@ -94,7 +94,7 @@ export const actionupdateFrameRendering = register({
           enabled: !appState.frameRendering.enabled,
         },
       },
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
   contextItemLabel: "labels.updateFrameRendering",
@@ -122,7 +122,7 @@ export const actionSetFrameAsActiveTool = register({
           type: "frame",
         }),
       },
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
   keyTest: (event) =>

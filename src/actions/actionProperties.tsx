@@ -222,7 +222,7 @@ const changeFontSize = (
           ? [...newFontSizes][0]
           : fallbackValue ?? appState.currentItemFontSize,
     },
-    commitToHistory: true,
+    commitToStore: true,
   };
 };
 
@@ -251,7 +251,7 @@ export const actionChangeStrokeColor = register({
         ...appState,
         ...value,
       },
-      commitToHistory: !!value.currentItemStrokeColor,
+      commitToStore: !!value.currentItemStrokeColor,
     };
   },
   PanelComponent: ({ elements, appState, updateData, appProps }) => (
@@ -294,7 +294,7 @@ export const actionChangeBackgroundColor = register({
         ...appState,
         ...value,
       },
-      commitToHistory: !!value.currentItemBackgroundColor,
+      commitToStore: !!value.currentItemBackgroundColor,
     };
   },
   PanelComponent: ({ elements, appState, updateData, appProps }) => (
@@ -337,7 +337,7 @@ export const actionChangeFillStyle = register({
         }),
       ),
       appState: { ...appState, currentItemFillStyle: value },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   PanelComponent: ({ elements, appState, updateData }) => {
@@ -409,7 +409,7 @@ export const actionChangeStrokeWidth = register({
         }),
       ),
       appState: { ...appState, currentItemStrokeWidth: value },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   PanelComponent: ({ elements, appState, updateData }) => (
@@ -463,7 +463,7 @@ export const actionChangeSloppiness = register({
         }),
       ),
       appState: { ...appState, currentItemRoughness: value },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   PanelComponent: ({ elements, appState, updateData }) => (
@@ -513,7 +513,7 @@ export const actionChangeStrokeStyle = register({
         }),
       ),
       appState: { ...appState, currentItemStrokeStyle: value },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   PanelComponent: ({ elements, appState, updateData }) => (
@@ -567,7 +567,7 @@ export const actionChangeOpacity = register({
         true,
       ),
       appState: { ...appState, currentItemOpacity: value },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   PanelComponent: ({ elements, appState, updateData }) => (
@@ -725,7 +725,7 @@ export const actionChangeFontFamily = register({
         ...appState,
         currentItemFontFamily: value,
       },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   PanelComponent: ({ elements, appState, updateData }) => {
@@ -814,7 +814,7 @@ export const actionChangeTextAlign = register({
         ...appState,
         currentItemTextAlign: value,
       },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   PanelComponent: ({ elements, appState, updateData }) => {
@@ -894,7 +894,7 @@ export const actionChangeVerticalAlign = register({
       appState: {
         ...appState,
       },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   PanelComponent: ({ elements, appState, updateData }) => {
@@ -967,7 +967,7 @@ export const actionChangeRoundness = register({
         ...appState,
         currentItemRoundness: value,
       },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   PanelComponent: ({ elements, appState, updateData }) => {
@@ -1047,7 +1047,7 @@ export const actionChangeArrowhead = register({
           ? "currentItemStartArrowhead"
           : "currentItemEndArrowhead"]: value.type,
       },
-      commitToHistory: true,
+      commitToStore: true,
     };
   },
   PanelComponent: ({ elements, appState, updateData }) => {

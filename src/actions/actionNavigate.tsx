@@ -11,7 +11,7 @@ export const actionGoToCollaborator = register({
   perform: (_elements, appState, value) => {
     const point = value as Collaborator["pointer"];
     if (!point) {
-      return { appState, commitToHistory: false };
+      return { appState, commitToStore: false };
     }
 
     return {
@@ -28,7 +28,7 @@ export const actionGoToCollaborator = register({
         // Close mobile menu
         openMenu: appState.openMenu === "canvas" ? null : appState.openMenu,
       },
-      commitToHistory: false,
+      commitToStore: false,
     };
   },
   PanelComponent: ({ updateData, data }) => {
