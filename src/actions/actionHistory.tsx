@@ -23,6 +23,7 @@ const writeData = (
     !appState.draggingElement
   ) {
     // Iterate through the history entries in case they result in no visible changes
+    // TODO: move somewhere else and test, if this never finishes / explodes, it will kill the whole experience
     do {
       // eslint-disable-next-line no-var
       var historyEntry = updater();

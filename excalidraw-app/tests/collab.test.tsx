@@ -82,12 +82,12 @@ describe("collaboration", () => {
         expect.objectContaining({ id: "A" }),
         expect.objectContaining({ id: "B", isDeleted: true }),
       ]);
-      expect(API.getStateHistory().length).toBe(1);
+      expect(API.getUndoStack().length).toBe(0);
     });
     window.collab.startCollaboration(null);
     await waitFor(() => {
       expect(h.elements).toEqual([expect.objectContaining({ id: "A" })]);
-      expect(API.getStateHistory().length).toBe(1);
+      expect(API.getUndoStack().length).toBe(0);
     });
 
     const undoAction = createUndoAction(h.history);
@@ -95,7 +95,7 @@ describe("collaboration", () => {
     h.app.actionManager.executeAction(undoAction);
     await waitFor(() => {
       expect(h.elements).toEqual([expect.objectContaining({ id: "A" })]);
-      expect(API.getStateHistory().length).toBe(1);
+      expect(API.getUndoStack().length).toBe(0);
     });
   });
 });

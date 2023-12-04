@@ -1472,7 +1472,7 @@ class App extends React.Component<AppProps, AppState> {
         if (actionResult.commitToStore) {
           this.store.resumeRecording();
         } else if (actionResult.shouldOnlyUpdateSnapshot) {
-          this.store.onlyUpdateSnapshot();
+          this.store.shouldOnlyUpdateSnapshot();
         }
       }
 
@@ -1487,7 +1487,7 @@ class App extends React.Component<AppProps, AppState> {
         if (actionResult.commitToStore) {
           this.store.resumeRecording();
         } else if (actionResult.shouldOnlyUpdateSnapshot) {
-          this.store.onlyUpdateSnapshot();
+          this.store.shouldOnlyUpdateSnapshot();
         }
 
         let viewModeEnabled = actionResult?.appState?.viewModeEnabled || false;
@@ -2950,7 +2950,7 @@ class App extends React.Component<AppProps, AppState> {
       }
 
       if (sceneData.isRemoteUpdate) {
-        this.store.onlyUpdateSnapshot();
+        this.store.shouldOnlyUpdateSnapshot();
         this.store.markRemoteUpdate();
       }
 
@@ -8035,9 +8035,15 @@ class App extends React.Component<AppProps, AppState> {
         fileHandle,
       );
       if (ret.type === MIME_TYPES.excalidraw) {
+        // First we need to delete existing elements, so they get recorded in the undo stack
+        const deletedExistingElements = this.scene
+          .getNonDeletedElements()
+          .map((element) => newElementWith(element, { isDeleted: true }));
+
         this.setState({ isLoading: true });
         this.syncActionResult({
           ...ret.data,
+          elements: deletedExistingElements.concat(ret.data.elements),
           appState: {
             ...(ret.data.appState || this.state),
             isLoading: false,

@@ -39,8 +39,8 @@ export class Store implements IStore {
     [elementsChange: ElementsChange, appStateChange: AppStateChange]
   >();
 
+  private onlyUpdateSnapshot: boolean = false;
   private recordingChanges: boolean = false;
-  private shouldOnlyUpdateSnapshot: boolean = false;
   private isRemoteUpdate: boolean = false;
 
   private snapshot = Snapshot.empty();
@@ -50,8 +50,8 @@ export class Store implements IStore {
     this.recordingChanges = true;
   }
 
-  public onlyUpdateSnapshot() {
-    this.shouldOnlyUpdateSnapshot = true;
+  public shouldOnlyUpdateSnapshot() {
+    this.onlyUpdateSnapshot = true;
   }
 
   public markRemoteUpdate() {
@@ -67,9 +67,10 @@ export class Store implements IStore {
     return this.onStoreIncrementEmitter.on(callback);
   }
 
+  // TODO: double check if it makes sense keeping the dependency on whole Scene here
   public capture(scene: Scene, appState: AppState): void {
     // Quick exit for irrelevant changes
-    if (!this.recordingChanges && !this.shouldOnlyUpdateSnapshot) {
+    if (!this.recordingChanges && !this.onlyUpdateSnapshot) {
       return;
     }
 
@@ -90,15 +91,20 @@ export class Store implements IStore {
     // Optimisation, don't continue if nothing has changed
     if (this.snapshot !== nextSnapshot) {
       // Calculate and record the changes based on the previous and next snapshot
-      if (this.recordingChanges && !this.shouldOnlyUpdateSnapshot) {
-        const elementsChange = nextSnapshot.didElementsChange
+      if (
+        this.recordingChanges &&
+        !this.onlyUpdateSnapshot &&
+        !!this.snapshot.options.sceneVersionNonce // Special case when versionNonce is undefined, meaning it's first initialization of the Scene, which we don't want to record
+        // TODO: think if there are some edge cases which break the above invariant (~versionNonce is empty == first scene initialization)
+      ) {
+        const elementsChange = nextSnapshot.options.didElementsChange
           ? ElementsChange.calculate(
               this.snapshot.elements,
               nextSnapshot.elements,
             )
           : ElementsChange.empty();
 
-        const appStateChange = nextSnapshot.didAppStateChange
+        const appStateChange = nextSnapshot.options.didAppStateChange
           ? AppStateChange.calculate(
               this.snapshot.appState,
               nextSnapshot.appState,
@@ -106,7 +112,6 @@ export class Store implements IStore {
           : AppStateChange.empty();
 
         if (!elementsChange.isEmpty() || !appStateChange.isEmpty()) {
-          console.log(elementsChange, appStateChange);
           this.onStoreIncrementEmitter.trigger(elementsChange, appStateChange);
         }
       }
@@ -115,8 +120,9 @@ export class Store implements IStore {
       this.snapshot = nextSnapshot;
     }
 
+    // Reset props
     this.recordingChanges = false;
-    this.shouldOnlyUpdateSnapshot = false;
+    this.onlyUpdateSnapshot = false;
     this.isRemoteUpdate = false;
   }
 
@@ -137,18 +143,10 @@ type CloningOptions = {
 };
 
 class Snapshot {
-  public get didElementsChange() {
-    return this.options.didElementsChange;
-  }
-
-  public get didAppStateChange() {
-    return this.options.didElementsChange;
-  }
-
   private constructor(
     public readonly elements: Map<string, ExcalidrawElement>,
     public readonly appState: ReturnType<typeof getObservedAppState>,
-    private readonly options: {
+    public readonly options: {
       didElementsChange: boolean;
       didAppStateChange: boolean;
       sceneVersionNonce?: number;
@@ -172,12 +170,12 @@ class Snapshot {
     nextAppState: AppState,
     options: CloningOptions,
   ) {
-    // Not storing everything, just history relevant props
-    const nextAppStateSnapshot = getObservedAppState(nextAppState);
+    const { sceneVersionNonce } = options;
     const didElementsChange =
-      !!this.options.sceneVersionNonce && // Covers the case when sceneVersionNonce is empty, meaning empty initialized scene, on which we don't want to emit
-      this.options.sceneVersionNonce !== options.sceneVersionNonce;
+      this.options.sceneVersionNonce !== sceneVersionNonce;
 
+    // Not watching over everything from app state, just the relevant props
+    const nextAppStateSnapshot = getObservedAppState(nextAppState);
     const didAppStateChange = this.detectChangedAppState(nextAppStateSnapshot);
 
     // Nothing has changed, so there is no point of continuing further
@@ -194,7 +192,7 @@ class Snapshot {
     const snapshot = new Snapshot(nextElementsSnapshot, nextAppStateSnapshot, {
       didElementsChange,
       didAppStateChange,
-      sceneVersionNonce: options.sceneVersionNonce,
+      sceneVersionNonce,
     });
 
     return snapshot;

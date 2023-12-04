@@ -30,6 +30,7 @@ describe("history", () => {
     );
     const undoAction = createUndoAction(h.history);
     const redoAction = createRedoAction(h.history);
+    // noop
     h.app.actionManager.executeAction(undoAction);
     expect(h.elements).toEqual([
       expect.objectContaining({ id: "A", isDeleted: false }),
@@ -51,14 +52,14 @@ describe("history", () => {
       expect.objectContaining({ id: "A", isDeleted: false }),
       expect.objectContaining({ id: rectangle.id, isDeleted: true }),
     ]);
-    expect(API.getStateHistory().length).toBe(1);
+    expect(API.getUndoStack().length).toBe(0);
 
     h.app.actionManager.executeAction(redoAction);
     expect(h.elements).toEqual([
       expect.objectContaining({ id: "A", isDeleted: false }),
       expect.objectContaining({ id: rectangle.id, isDeleted: false }),
     ]);
-    expect(API.getStateHistory().length).toBe(2);
+    expect(API.getUndoStack().length).toBe(1);
   });
 
   it("scene import via drag&drop should create new history entry", async () => {
@@ -94,9 +95,10 @@ describe("history", () => {
       ),
     );
 
-    await waitFor(() => expect(API.getStateHistory().length).toBe(2));
+    await waitFor(() => expect(API.getUndoStack().length).toBe(1));
     expect(h.state.viewBackgroundColor).toBe("#000");
     expect(h.elements).toEqual([
+      expect.objectContaining({ id: "A", isDeleted: true }),
       expect.objectContaining({ id: "B", isDeleted: false }),
     ]);
 
@@ -111,8 +113,8 @@ describe("history", () => {
     h.app.actionManager.executeAction(redoAction);
     expect(h.state.viewBackgroundColor).toBe("#000");
     expect(h.elements).toEqual([
-      expect.objectContaining({ id: "B", isDeleted: false }),
       expect.objectContaining({ id: "A", isDeleted: true }),
+      expect.objectContaining({ id: "B", isDeleted: false }),
     ]);
   });
 

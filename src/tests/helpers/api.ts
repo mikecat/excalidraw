@@ -62,9 +62,9 @@ export class API {
     return selectedElements[0];
   };
 
-  static getStateHistory = () => {
+  static getUndoStack = () => {
     // @ts-ignore
-    return h.history.stateHistory;
+    return h.history.undoStack;
   };
 
   static clearSelection = () => {
