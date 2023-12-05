@@ -223,7 +223,13 @@ export type PointBinding = {
   gap: number;
 };
 
-export type Arrowhead = "arrow" | "bar" | "dot" | "triangle";
+export type UMLArrowhead =
+  | "uml_arrow"
+  | "uml_triangle"
+  | "uml_diamond"
+  | "uml_diamond_filled";
+
+export type Arrowhead = "arrow" | "bar" | "dot" | "triangle" | UMLArrowhead;
 
 export type ExcalidrawLinearElement = _ExcalidrawElementBase &
   Readonly<{

@@ -145,6 +145,113 @@ const modifyIframeLikeForRoughOptions = (
   return element;
 };
 
+const getArrowheadShapes = (
+  element: ExcalidrawLinearElement,
+  shape: Drawable[],
+  position: "start" | "end",
+  arrowhead: Arrowhead,
+  generator: RoughGenerator,
+  options: Options,
+  canvasBackgroundColor: string,
+) => {
+  const arrowheadPoints = getArrowheadPoints(
+    element,
+    shape,
+    position,
+    arrowhead,
+  );
+
+  if (arrowheadPoints === null) {
+    return [];
+  }
+
+  switch (arrowhead) {
+    case "dot": {
+      const [x, y, r] = arrowheadPoints;
+
+      return [
+        generator.circle(x, y, r, {
+          ...options,
+          fill: element.strokeColor,
+          fillStyle: "solid",
+          stroke: "none",
+        }),
+      ];
+    }
+    case "uml_triangle":
+    case "triangle": {
+      const [x, y, x2, y2, x3, y3] = arrowheadPoints;
+
+      // always use solid stroke for triangle arrowhead
+      delete options.strokeLineDash;
+
+      return [
+        generator.polygon(
+          [
+            [x, y],
+            [x2, y2],
+            [x3, y3],
+            [x, y],
+          ],
+          {
+            ...options,
+            fill: element.strokeColor,
+            fillStyle: "solid",
+          },
+        ),
+      ];
+    }
+    case "uml_diamond":
+    case "uml_diamond_filled": {
+      const [x, y, x2, y2, x3, y3, x4, y4] = arrowheadPoints;
+
+      // always use solid stroke for triangle arrowhead
+      delete options.strokeLineDash;
+
+      return [
+        generator.polygon(
+          [
+            [x, y],
+            [x2, y2],
+            [x3, y3],
+            [x4, y4],
+            [x, y],
+          ],
+          {
+            ...options,
+            // fill: element.strokeColor,
+            fill:
+              arrowhead === "uml_diamond"
+                ? canvasBackgroundColor
+                : element.strokeColor,
+            fillStyle: "solid",
+            roughness: Math.min(1, options.roughness || 0),
+          },
+        ),
+      ];
+    }
+    case "bar":
+    case "arrow":
+    case "uml_arrow":
+    default: {
+      const [x2, y2, x3, y3, x4, y4] = arrowheadPoints;
+
+      if (element.strokeStyle === "dotted") {
+        // for dotted arrows caps, reduce gap to make it more legible
+        const dash = getDashArrayDotted(element.strokeWidth - 1);
+        options.strokeLineDash = [dash[0], dash[1] - 1];
+      } else {
+        // for solid/dashed, keep solid arrow cap
+        delete options.strokeLineDash;
+      }
+      return [
+        generator.line(x3, y3, x2, y2, options),
+        generator.line(x4, y4, x2, y2, options),
+      ];
+    }
+  }
+};
+
 /**
  * Generates the roughjs shape for given element.
  *
@@ -155,7 +262,10 @@ const modifyIframeLikeForRoughOptions = (
 export const _generateElementShape = (
   element: Exclude<NonDeletedExcalidrawElement, ExcalidrawSelectionElement>,
   generator: RoughGenerator,
-  isExporting: boolean = false,
+  {
+    isExporting,
+    canvasBackgroundColor,
+  }: { isExporting: boolean; canvasBackgroundColor: string },
 ): Drawable | Drawable[] | null => {
   switch (element.type) {
     case "rectangle":
@@ -276,83 +386,15 @@ export const _generateElementShape = (
       if (element.type === "arrow") {
         const { startArrowhead = null, endArrowhead = "arrow" } = element;
 
-        const getArrowheadShapes = (
-          element: ExcalidrawLinearElement,
-          shape: Drawable[],
-          position: "start" | "end",
-          arrowhead: Arrowhead,
-        ) => {
-          const arrowheadPoints = getArrowheadPoints(
-            element,
-            shape,
-            position,
-            arrowhead,
-          );
-
-          if (arrowheadPoints === null) {
-            return [];
-          }
-
-          // Other arrowheads here...
-          if (arrowhead === "dot") {
-            const [x, y, r] = arrowheadPoints;
-
-            return [
-              generator.circle(x, y, r, {
-                ...options,
-                fill: element.strokeColor,
-                fillStyle: "solid",
-                stroke: "none",
-              }),
-            ];
-          }
-
-          if (arrowhead === "triangle") {
-            const [x, y, x2, y2, x3, y3] = arrowheadPoints;
-
-            // always use solid stroke for triangle arrowhead
-            delete options.strokeLineDash;
-
-            return [
-              generator.polygon(
-                [
-                  [x, y],
-                  [x2, y2],
-                  [x3, y3],
-                  [x, y],
-                ],
-                {
-                  ...options,
-                  fill: element.strokeColor,
-                  fillStyle: "solid",
-                },
-              ),
-            ];
-          }
-
-          // Arrow arrowheads
-          const [x2, y2, x3, y3, x4, y4] = arrowheadPoints;
-
-          if (element.strokeStyle === "dotted") {
-            // for dotted arrows caps, reduce gap to make it more legible
-            const dash = getDashArrayDotted(element.strokeWidth - 1);
-            options.strokeLineDash = [dash[0], dash[1] - 1];
-          } else {
-            // for solid/dashed, keep solid arrow cap
-            delete options.strokeLineDash;
-          }
-          return [
-            generator.line(x3, y3, x2, y2, options),
-            generator.line(x4, y4, x2, y2, options),
-          ];
-        };
-
         if (startArrowhead !== null) {
           const shapes = getArrowheadShapes(
             element,
             shape,
             "start",
             startArrowhead,
+            generator,
+            options,
+            canvasBackgroundColor,
           );
           shape.push(...shapes);
         }
@@ -367,6 +409,9 @@ export const _generateElementShape = (
             shape,
             "end",
             endArrowhead,
+            generator,
+            options,
+            canvasBackgroundColor,
           );
           shape.push(...shapes);
         }
