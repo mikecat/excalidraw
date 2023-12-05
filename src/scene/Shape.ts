@@ -224,7 +224,6 @@ const getArrowheadShapes = (
           ],
           {
             ...options,
-            // fill: element.strokeColor,
             fill:
               arrowhead === "d_diamond"
                 ? canvasBackgroundColor
