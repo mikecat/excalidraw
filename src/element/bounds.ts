@@ -488,10 +488,10 @@ const getFreeDrawElementAbsoluteCoords = (
 export const getArrowheadSize = (arrowhead: Arrowhead): number => {
   switch (arrowhead) {
     case "arrow":
-    case "uml_arrow":
+    case "d_arrow":
       return 25;
-    case "uml_diamond":
-    case "uml_diamond_filled":
+    case "d_diamond":
+    case "d_diamond_filled":
       return 12;
     default:
       return 15;
@@ -504,7 +504,7 @@ export const getArrowheadAngle = (arrowhead: Arrowhead): number => {
     case "bar":
       return 90;
     case "arrow":
-    case "uml_arrow":
+    case "d_arrow":
       return 20;
     default:
       return 25;
@@ -586,9 +586,7 @@ export const getArrowheadPoints = (
   // Scale down the arrowhead until we hit a certain size so that it doesn't look weird.
   // This value is selected by minimizing a minimum size with the last segment of the arrowhead
   const lengthMultiplier =
-    arrowhead === "uml_diamond" || arrowhead === "uml_diamond_filled"
-      ? 0.25
-      : 0.5;
+    arrowhead === "d_diamond" || arrowhead === "d_diamond_filled" ? 0.25 : 0.5;
   const minSize = Math.min(size, length * lengthMultiplier);
   const xs = x2 - nx * minSize;
   const ys = y2 - ny * minSize;
@@ -604,7 +602,7 @@ export const getArrowheadPoints = (
   const [x3, y3] = rotate(xs, ys, x2, y2, (-angle * Math.PI) / 180);
   const [x4, y4] = rotate(xs, ys, x2, y2, (angle * Math.PI) / 180);
 
-  if (arrowhead === "uml_diamond" || arrowhead === "uml_diamond_filled") {
+  if (arrowhead === "d_diamond" || arrowhead === "d_diamond_filled") {
     // point opposite to the arrowhead point
     let ox;
     let oy;
