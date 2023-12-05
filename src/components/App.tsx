@@ -1757,7 +1757,7 @@ class App extends React.Component<AppProps, AppState> {
           configurable: true,
           value: this.history,
         },
-        // TODO: add store
+        // TODO_UNDO: add store
       });
     }
 
@@ -2072,7 +2072,7 @@ class App extends React.Component<AppProps, AppState> {
       this.state.selectedLinearElement &&
       !this.state.selectedElementIds[this.state.selectedLinearElement.elementId]
     ) {
-      // TODO: re-check, as this is causing a bug when a single selected linear element is deleted, undo action does bring it unselected
+      // TODO_UNDO: re-check, as this is causing a bug when a single selected linear element is deleted, undo action does bring it unselected
 
       // To make sure `selectedLinearElement` is in sync with `selectedElementIds`, however this shouldn't be needed once
       // we have a single API to update `selectedElementIds`
@@ -2099,7 +2099,7 @@ class App extends React.Component<AppProps, AppState> {
       );
     }
 
-    // TODO: we could wrap this in requestIdleCallback when available
+    // TODO_UNDO: we could wrap this in requestIdleCallback when available
     // - specify timeout 0 (so it is triggered immediately)
     // - debounce on every frame (16ms?)
     this.store.capture(this.scene, this.state);
@@ -7285,8 +7285,8 @@ class App extends React.Component<AppProps, AppState> {
         }));
       }
 
-      // TODO: uncovered / weird cases, anything that cancels selection might need to end-up also in the history entry as well (not just pointer up)
-      // TODO: add esc to cancel current selection
+      // TODO_UNDO: uncovered / weird cases, anything that cancels selection might need to end-up also in the history entry as well (not just pointer up)
+      // TODO_UNDO: add esc to cancel current selection
       if (
         activeTool.type !== "selection" ||
         isSomeElementSelected(this.scene.getNonDeletedElements(), this.state) ||

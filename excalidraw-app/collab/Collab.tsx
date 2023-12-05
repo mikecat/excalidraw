@@ -453,12 +453,12 @@ class Collab extends PureComponent<Props, CollabState> {
       // expose potentially sensitive user data in case user manually deletes
       // existing elements (or clears scene), which would otherwise be persisted
       // to database even if deleted before creating the room.
-      // TODO: double check, looks like we might want to leave it
+      // TODO_UNDO: double check, looks like we might want to leave it
       // this.excalidrawAPI.history.clear();
       this.excalidrawAPI.updateScene({
         elements,
         commitToStore: false,
-        isRemoteUpdate: true, //  TODO: is it really?
+        isRemoteUpdate: true, //  TODO_UNDO: is it really?
       });
 
       this.saveCollabRoomToFirebase(getSyncableElements(elements));
@@ -780,7 +780,7 @@ class Collab extends PureComponent<Props, CollabState> {
 
   syncElements = (elements: readonly ExcalidrawElement[]) => {
     this.broadcastElements(elements);
-    // TODO: re-enable only for dev mode
+    // TODO_UNDO: re-enable only for dev mode
     // this.queueSaveToFirebase();
   };
 

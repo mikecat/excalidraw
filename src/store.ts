@@ -4,10 +4,10 @@ import { deepCopyElement } from "./element/newElement";
 import { ExcalidrawElement } from "./element/types";
 import { Emitter } from "./emitter";
 import Scene from "./scene/Scene";
-import { AppState } from "./types";
+import { AppState, ObservedAppState } from "./types";
 import { isShallowEqual } from "./utils";
 
-const getObservedAppState = (appState: AppState) => {
+const getObservedAppState = (appState: AppState): ObservedAppState => {
   return {
     name: appState.name,
     editingGroupId: appState.editingGroupId,
@@ -15,7 +15,7 @@ const getObservedAppState = (appState: AppState) => {
     selectedElementIds: appState.selectedElementIds,
     selectedGroupIds: appState.selectedGroupIds,
     editingLinearElement: appState.editingLinearElement,
-    selectedLinearElement: appState.selectedLinearElement, // TODO: Think about these two as one level shallow equal is not enough for them (they have new reference even though they shouldn't, sometimes their id does not correspond to selectedElementId)
+    selectedLinearElement: appState.selectedLinearElement, // TODO_UNDO: Think about these two as one level shallow equal is not enough for them (they have new reference even though they shouldn't, sometimes their id does not correspond to selectedElementId)
   };
 };
 
@@ -34,7 +34,7 @@ export interface IStore {
  * In the future, Store should coordinate the changes and maintain its increments cohesive between different instances.
  */
 export class Store implements IStore {
-  // TODO: Add a specific increment type which could be a squash of multiple changes
+  // TODO_UNDO: Add a specific increment type which could be a squash of multiple changes
   private readonly onStoreIncrementEmitter = new Emitter<
     [elementsChange: ElementsChange, appStateChange: AppStateChange]
   >();
@@ -67,7 +67,7 @@ export class Store implements IStore {
     return this.onStoreIncrementEmitter.on(callback);
   }
 
-  // TODO: double check if it makes sense keeping the dependency on whole Scene here
+  // TODO_UNDO: double check if it makes sense keeping the dependency on whole Scene here
   public capture(scene: Scene, appState: AppState): void {
     // Quick exit for irrelevant changes
     if (!this.recordingChanges && !this.onlyUpdateSnapshot) {
@@ -95,7 +95,7 @@ export class Store implements IStore {
         this.recordingChanges &&
         !this.onlyUpdateSnapshot &&
         !!this.snapshot.options.sceneVersionNonce // Special case when versionNonce is undefined, meaning it's first initialization of the Scene, which we don't want to record
-        // TODO: think if there are some edge cases which break the above invariant (~versionNonce is empty == first scene initialization)
+        // TODO_UNDO: think if there are some edge cases which break the above invariant (~versionNonce is empty !== first scene initialization)
       ) {
         const elementsChange = nextSnapshot.options.didElementsChange
           ? ElementsChange.calculate(
@@ -145,7 +145,7 @@ type CloningOptions = {
 class Snapshot {
   private constructor(
     public readonly elements: Map<string, ExcalidrawElement>,
-    public readonly appState: ReturnType<typeof getObservedAppState>,
+    public readonly appState: ObservedAppState,
     public readonly options: {
       didElementsChange: boolean;
       didAppStateChange: boolean;
@@ -172,7 +172,7 @@ class Snapshot {
   ) {
     const { sceneVersionNonce } = options;
     const didElementsChange =
-      this.options.sceneVersionNonce !== sceneVersionNonce;
+      this.options.sceneVersionNonce !== sceneVersionNonce; // TODO_UNDO: think about a case when scene could be the same, even though versionNonce is different (might be worth checking individual elements - altough there is same problem, but occuring with lower probability)
 
     // Not watching over everything from app state, just the relevant props
     const nextAppStateSnapshot = getObservedAppState(nextAppState);
@@ -198,11 +198,9 @@ class Snapshot {
     return snapshot;
   }
 
-  private detectChangedAppState(
-    nextAppState: ReturnType<typeof getObservedAppState>,
-  ) {
-    // TODO: editingLinearElement? other?
-    return !isShallowEqual(this.appState, nextAppState, {
+  private detectChangedAppState(observedAppState: ObservedAppState) {
+    // TODO_UNDO: Linear element?
+    return !isShallowEqual(this.appState, observedAppState, {
       selectedElementIds: isShallowEqual,
       selectedGroupIds: isShallowEqual,
     });
@@ -229,11 +227,8 @@ class Snapshot {
         !prevElement || // element was added
         (prevElement && prevElement.versionNonce !== nextElement.versionNonce) // element was updated
       ) {
-        /**
-         * Special case, when we don't want to capture editing element from remote, if it's currently being edited
-         * If we would capture it, we would capture yet uncommited element, which would break undo
-         * If we would capture it, we would capture yet uncommited element, which would break undo
-         */
+        // Special case, when we don't want to capture editing element from remote, if it's currently being edited
+        // If we would capture it, we would capture yet uncommited element, which would break undo
         if (
           !!options.isRemoteUpdate &&
           nextElement.id === options.editingElementId

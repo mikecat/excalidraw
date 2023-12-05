@@ -1,6 +1,12 @@
 import { newElementWith } from "./element/mutateElement";
 import { ExcalidrawElement } from "./element/types";
-import { AppState } from "./types";
+import {
+  AppState,
+  ObservedAppState,
+  ObservedElementsAppState,
+  ObservedStandaloneAppState,
+} from "./types";
+import { SubtypeOf } from "./utility-types";
 import { isShallowEqual } from "./utils";
 
 /**
@@ -73,13 +79,38 @@ class Delta<T> {
     return !Object.keys(delta.from).length && !Object.keys(delta.to).length;
   }
 
-  public static containsDifference<T>(delta: Partial<T>, object: T) {
+  /**
+   * Compares if the delta contains any different values compared to the object.
+   *
+   * WARN: it's based on shallow compare performed only on the first level, won't work for objects with deeper props.
+   */
+  public static containsDifference<T>(delta: Partial<T>, object: T): boolean {
+    const anyDistinctKey = this.distinctKeysIterator(delta, object).next()
+      .value;
+    return !!anyDistinctKey;
+  }
+
+  /**
+   * Returns all the keys that have distinct values.
+   *
+   * WARN: it's based on shallow compare performed only on the first level, won't work for objects with deeper props.
+   */
+  public static gatherDifferences<T>(delta: Partial<T>, object: T) {
+    const distinctKeys = new Set<string>();
+
+    for (const key of this.distinctKeysIterator(delta, object)) {
+      distinctKeys.add(key);
+    }
+
+    return Array.from(distinctKeys);
+  }
+
+  private static *distinctKeysIterator<T>(delta: Partial<T>, object: T) {
     for (const [key, deltaValue] of Object.entries(delta)) {
       const objectValue = object[key as keyof T];
+
       if (deltaValue !== objectValue) {
-        // TODO: Worth going also shallow equal way?
-        // - it means O(n^3), but this is calculated on applying the change (not a hot path)
-        // - better to sort this at the root (if possible)
+        // TODO_UNDO: staticly fail (typecheck) on deeper objects?
         if (
           typeof deltaValue === "object" &&
           typeof objectValue === "object" &&
@@ -93,15 +124,12 @@ class Delta<T> {
           continue;
         }
 
-        return true;
+        yield key;
       }
     }
-
-    return false;
   }
 }
 
-// TODO: I also might need a clone (with modifier)
 /**
  * Encapsulates the modifications captured as `Delta`/s.
  */
@@ -116,7 +144,7 @@ interface Change<T> {
    *
    * @returns new object instance and boolean, indicating if there was any visible change made.
    */
-  applyTo(previous: T): [T, boolean];
+  applyTo(previous: Readonly<T>, ...options: unknown[]): [T, boolean];
 
   /**
    * Checks whether there are actually `Delta`s.
@@ -125,9 +153,9 @@ interface Change<T> {
 }
 
 export class AppStateChange implements Change<AppState> {
-  private constructor(private readonly delta: Delta<AppState>) {}
+  private constructor(private readonly delta: Delta<ObservedAppState>) {}
 
-  public static calculate<T extends Partial<AppState>>(
+  public static calculate<T extends Partial<ObservedAppState>>(
     prevAppState: T,
     nextAppState: T,
   ): AppStateChange {
@@ -144,10 +172,13 @@ export class AppStateChange implements Change<AppState> {
     return new AppStateChange(inversedDelta);
   }
 
-  public applyTo(appState: AppState): [AppState, boolean] {
-    const containsDifference = Delta.containsDifference(
-      this.delta.to,
+  public applyTo(
+    appState: Readonly<AppState>,
+    elements: Readonly<Map<string, ExcalidrawElement>>,
+  ): [AppState, boolean] {
+    const constainsVisibleChanges = this.checkForVisibleChanges(
       appState,
+      elements,
     );
 
     const newAppState = {
@@ -155,11 +186,170 @@ export class AppStateChange implements Change<AppState> {
       ...this.delta.to,
     };
 
-    return [newAppState, containsDifference];
+    return [newAppState, constainsVisibleChanges];
   }
 
   public isEmpty(): boolean {
     return Delta.isEmpty(this.delta);
+  }
+
+  private checkForVisibleChanges(
+    appState: AppState,
+    elements: Map<string, ExcalidrawElement>,
+  ): boolean {
+    const containsStandaloneDifference = Delta.containsDifference(
+      AppStateChange.stripElementsProps(this.delta.to),
+      appState,
+    );
+
+    if (containsStandaloneDifference) {
+      // We detected a a difference which is unrelated to the elements
+      return true;
+    }
+
+    const containsElementsDifference = Delta.containsDifference(
+      AppStateChange.stripStandaloneProps(this.delta.to),
+      appState,
+    );
+
+    if (!containsStandaloneDifference && !containsElementsDifference) {
+      // There is no difference detected at all
+      return false;
+    }
+
+    // We need to handle elements differences separately,
+    // as they could be related to deleted elements and/or they could on their own result in no visible action
+    const changedDeltaKeys = Delta.gatherDifferences(
+      AppStateChange.stripStandaloneProps(this.delta.to),
+      appState,
+    ) as Array<keyof ObservedElementsAppState>;
+
+    // Check whether delta properties are related to the existing non-deleted elements
+    for (const key of changedDeltaKeys) {
+      switch (key) {
+        case "selectedElementIds":
+          if (
+            AppStateChange.checkForSelectedElementsDifferences(
+              this.delta.to[key],
+              appState,
+              elements,
+            )
+          ) {
+            return true;
+          }
+          break;
+        case "selectedLinearElement":
+        case "editingLinearElement":
+          if (
+            AppStateChange.checkForLinearElementDifferences(
+              this.delta.to[key],
+              elements,
+            )
+          ) {
+            return true;
+          }
+          break;
+        case "editingGroupId":
+        case "selectedGroupIds":
+          return AppStateChange.checkForGroupsDifferences();
+        default: {
+          // WARN: this exhaustive check in the switch statement is here to catch unexpected future changes
+          const exhaustiveCheck: never = key;
+          throw new Error(
+            `Unknown ObservedElementsAppState key '${exhaustiveCheck}'.`,
+          );
+        }
+      }
+    }
+
+    return false;
+  }
+
+  private static checkForSelectedElementsDifferences(
+    deltaIds: ObservedElementsAppState["selectedElementIds"] | undefined,
+    appState: AppState,
+    elements: Map<string, ExcalidrawElement>,
+  ) {
+    if (!deltaIds) {
+      // There are no selectedElementIds in the delta
+      return;
+    }
+
+    const selectedElementIds = Object.keys(appState.selectedElementIds);
+    for (const id of Object.keys(deltaIds)) {
+      const element = elements.get(id);
+
+      if (element && !element.isDeleted) {
+        if (selectedElementIds.includes(id)) {
+          // Element is already selected
+          return;
+        }
+
+        // Found related visible element!
+        return true;
+      }
+    }
+  }
+
+  private static checkForLinearElementDifferences(
+    linearElement:
+      | ObservedElementsAppState["editingLinearElement"]
+      | ObservedAppState["selectedLinearElement"]
+      | undefined,
+    elements: Map<string, ExcalidrawElement>,
+  ) {
+    if (!linearElement) {
+      return;
+    }
+
+    const element = elements.get(linearElement.elementId);
+
+    if (element && !element.isDeleted) {
+      // Found related visible element!
+      return true;
+    }
+  }
+
+  // Currently we don't have an index of elements by groupIds, which means
+  // the calculation for getting the visible elements based on the groupIds stored in delta
+  // is not worth performing - due to perf. and dev. complexity.
+  //
+  // Therefore we are accepting in these cases empty undos / redos, which should be pretty rare:
+  // - only when one of these (or both) are in delta and the are no non deleted elements containing these group ids
+  private static checkForGroupsDifferences() {
+    return true;
+  }
+
+  private static stripElementsProps(
+    delta: Partial<ObservedAppState>,
+  ): Partial<ObservedStandaloneAppState> {
+    // WARN: Do not remove the type-casts as they here for exhaustive type checks
+    const {
+      editingGroupId,
+      selectedGroupIds,
+      selectedElementIds,
+      editingLinearElement,
+      selectedLinearElement,
+      ...standaloneProps
+    } = delta as ObservedAppState;
+
+    return standaloneProps as SubtypeOf<
+      typeof standaloneProps,
+      ObservedStandaloneAppState
+    >;
+  }
+
+  private static stripStandaloneProps(
+    delta: Partial<ObservedAppState>,
+  ): Partial<ObservedElementsAppState> {
+    // WARN: Do not remove the type-casts as they here for exhaustive type checks
+    const { name, viewBackgroundColor, ...elementsProps } =
+      delta as ObservedAppState;
+
+    return elementsProps as SubtypeOf<
+      typeof elementsProps,
+      ObservedElementsAppState
+    >;
   }
 }
 
@@ -175,6 +365,7 @@ export class AppStateChange implements Change<AppState> {
  */
 export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
   private constructor(
+    // TODO_UNDO: re-think the possible need for added/ remove/ updated deltas (possibly for handling edge cases with deletion, fixing bindings for deletion, showing changes added/modified/updated for version end etc.)
     private readonly deltas: Map<string, Delta<ExcalidrawElement>>,
   ) {}
 
@@ -200,8 +391,8 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
 
     const deltas = new Map<string, Delta<T>>();
 
-    // TODO: this might be needed only in same edge cases, like during persist, when isDeleted elements are removed
-    for (const [zIndex, prevElement] of prevElements.entries()) {
+    // TODO_UNDO: this might be needed only in same edge cases, like during persist, when isDeleted elements are removed
+    for (const prevElement of prevElements.values()) {
       const nextElement = nextElements.get(prevElement.id);
 
       // Element got removed
@@ -213,15 +404,14 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
         const delta = Delta.create(
           from,
           to,
-          ElementsChange.clearIrrelevantProps,
+          ElementsChange.stripIrrelevantProps,
         );
 
         deltas.set(prevElement.id, delta as Delta<T>);
       }
     }
 
-    // TODO: try to find a workaround for zIndex
-    for (const [zIndex, nextElement] of nextElements.entries()) {
+    for (const nextElement of nextElements.values()) {
       const prevElement = prevElements.get(nextElement.id);
 
       // Element got added
@@ -233,7 +423,7 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
         const delta = Delta.create(
           from,
           to,
-          ElementsChange.clearIrrelevantProps,
+          ElementsChange.stripIrrelevantProps,
         );
 
         deltas.set(nextElement.id, delta as Delta<T>);
@@ -251,7 +441,7 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
         const delta = Delta.calculate<ExcalidrawElement>(
           prevElement,
           nextElement,
-          ElementsChange.clearIrrelevantProps,
+          ElementsChange.stripIrrelevantProps,
         );
 
         // Make sure there are at least some changes (except changes to irrelevant data)
@@ -279,7 +469,7 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
   }
 
   public applyTo(
-    elements: Map<string, ExcalidrawElement>,
+    elements: Readonly<Map<string, ExcalidrawElement>>,
   ): [Map<string, ExcalidrawElement>, boolean] {
     let containsVisibleDifference = false;
 
@@ -290,7 +480,7 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
         // Check if there was actually any visible change before applying
         if (!containsVisibleDifference) {
           if (existingElement.isDeleted !== !!delta.to.isDeleted) {
-            // Special case, when delta (un)deletes alement, it results in a visible change
+            // Special case, when delta (un)deletes element, it results in a visible change
             containsVisibleDifference = true;
           } else if (!existingElement.isDeleted) {
             // Check for any difference on a visible element
@@ -309,7 +499,7 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
   }
 
   public isEmpty(): boolean {
-    // TODO: might need to go through all deltas and check for emptiness
+    // TODO_UNDO: might need to go through all deltas and check for emptiness
     return this.deltas.size === 0;
   }
 
@@ -358,8 +548,9 @@ export class ElementsChange implements Change<Map<string, ExcalidrawElement>> {
     return ElementsChange.create(deltas);
   }
 
-  private static clearIrrelevantProps(delta: Partial<ExcalidrawElement>) {
-    const { updated, version, versionNonce, seed, ...clearedDelta } = delta;
-    return clearedDelta;
+  private static stripIrrelevantProps(delta: Partial<ExcalidrawElement>) {
+    // TODO_UNDO: is seed correctly stripped?
+    const { updated, version, versionNonce, seed, ...strippedDelta } = delta;
+    return strippedDelta;
   }
 }

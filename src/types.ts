@@ -170,6 +170,22 @@ export type InteractiveCanvasAppState = Readonly<
   }
 >;
 
+export type ObservedAppState = ObservedStandaloneAppState &
+  ObservedElementsAppState;
+
+export type ObservedStandaloneAppState = {
+  name: AppState["name"];
+  viewBackgroundColor: AppState["viewBackgroundColor"];
+};
+
+export type ObservedElementsAppState = {
+  editingGroupId: AppState["editingGroupId"];
+  selectedElementIds: AppState["selectedElementIds"];
+  selectedGroupIds: AppState["selectedGroupIds"];
+  editingLinearElement: AppState["editingLinearElement"];
+  selectedLinearElement: AppState["selectedLinearElement"];
+};
+
 export type AppState = {
   contextMenu: {
     items: ContextMenuItems;
