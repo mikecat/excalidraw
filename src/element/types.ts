@@ -223,13 +223,16 @@ export type PointBinding = {
   gap: number;
 };
 
-export type UMLArrowhead =
-  | "uml_arrow"
-  | "uml_triangle"
-  | "uml_diamond"
-  | "uml_diamond_filled";
+// these arroheads carry meaning and their rendering should stay consistent
+// (used in UML, ERD, etc.)
+export type DiagramArrowhead =
+  | "d_arrow" // simple arrow
+  | "d_triangle" // triangle arrow, unfilled
+  | "d_triangle_filled" // triangle arrow, filled
+  | "d_diamond" // diamond, unfilled
+  | "d_diamond_filled"; // diamond, filled
 
-export type Arrowhead = "arrow" | "bar" | "dot" | "triangle" | UMLArrowhead;
+export type Arrowhead = "arrow" | "bar" | "dot" | "triangle" | DiagramArrowhead;
 
 export type ExcalidrawLinearElement = _ExcalidrawElementBase &
   Readonly<{

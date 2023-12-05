@@ -178,7 +178,8 @@ const getArrowheadShapes = (
         }),
       ];
     }
-    case "uml_triangle":
+    case "d_triangle_filled":
+    case "d_triangle":
     case "triangle": {
       const [x, y, x2, y2, x3, y3] = arrowheadPoints;
 
@@ -195,14 +196,18 @@ const getArrowheadShapes = (
           ],
           {
             ...options,
-            fill: element.strokeColor,
+            fill:
+              arrowhead === "d_triangle"
+                ? canvasBackgroundColor
+                : element.strokeColor,
             fillStyle: "solid",
+            roughness: Math.min(1, options.roughness || 0),
           },
         ),
       ];
     }
-    case "uml_diamond":
-    case "uml_diamond_filled": {
+    case "d_diamond":
+    case "d_diamond_filled": {
       const [x, y, x2, y2, x3, y3, x4, y4] = arrowheadPoints;
 
       // always use solid stroke for triangle arrowhead
@@ -221,7 +226,7 @@ const getArrowheadShapes = (
             ...options,
             // fill: element.strokeColor,
             fill:
-              arrowhead === "uml_diamond"
+              arrowhead === "d_diamond"
                 ? canvasBackgroundColor
                 : element.strokeColor,
             fillStyle: "solid",
@@ -232,7 +237,7 @@ const getArrowheadShapes = (
     }
     case "bar":
     case "arrow":
-    case "uml_arrow":
+    case "d_arrow":
     default: {
       const [x2, y2, x3, y3, x4, y4] = arrowheadPoints;
 
